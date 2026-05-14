@@ -87,7 +87,7 @@ What this means in practice:
 
 ### Even with `assumeutreexo`, a bad accumulator is detectable
 
-The trust assumption is weaker than it sounds. Under Utreexo, every transaction input in every new block must come with an inclusion proof against the current accumulator state. If the bundled snapshot were wrong — wrong roots, wrong height, doctored to hide or invent UTXOs — those proofs simply would not verify as honest peers relay real blocks: signatures would check out but inclusion proofs would fail, and Mandacaru would reject the chain rather than follow it.
+Under Utreexo, every transaction input in every new block must come with an inclusion proof against the current accumulator state. If the bundled snapshot were wrong — wrong roots, wrong height, doctored to hide or invent UTXOs — those proofs simply would not verify as honest peers relay real blocks: signatures would check out but inclusion proofs would fail, and Mandacaru would reject the chain rather than follow it.
 
 In other words, a bad snapshot doesn't silently corrupt the node's view of Bitcoin; it makes the node unable to follow the real chain at all. The worst plausible failure mode is a stuck or refusing node, not a node that quietly accepts invalid history. This is what makes the `assumeutreexo` trade-off reasonable in practice: you accept faster startup in exchange for a trust assumption that is self-checking against the live network.
 
