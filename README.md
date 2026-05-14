@@ -2,7 +2,7 @@
 
 A lightweight Bitcoin validator node for Android, powered by [Utreexo](https://dci.mit.edu/utreexo) and [Floresta](https://github.com/vinteumorg/Floresta).
 
-Run a full Bitcoin node directly on your phone with minimal storage requirements thanks to Utreexo's compact accumulator design.
+Run a validating Bitcoin node directly on your phone with minimal storage requirements thanks to Utreexo's compact accumulator design. Mandacaru uses `assumeutreexo` by default — see [the note below](#a-note-on-validation-assumeutreexo-is-enabled-by-default) for what that means for the trust model.
 
 ## Features
 
@@ -74,7 +74,24 @@ Run a full Bitcoin node directly on your phone with minimal storage requirements
 
 ## What is Utreexo?
 
-Utreexo is a dynamic hash-based accumulator that allows Bitcoin nodes to validate the blockchain without storing the full UTXO set. This reduces storage requirements from tens of gigabytes to just a few megabytes, making it practical to run a full validating node on mobile devices.
+Utreexo is a dynamic hash-based accumulator that allows Bitcoin nodes to validate the blockchain without storing the full UTXO set. This reduces storage requirements from tens of gigabytes to just a few megabytes, making it practical to run a validating node on mobile devices.
+
+## A note on validation: `assumeutreexo` is enabled by default
+
+Mandacaru ships with `assumeutreexo` turned on. At startup the node trusts a hardcoded Utreexo state snapshot (the accumulator roots at a specific block height) and begins full validation from that point forward — verifying every new block, transaction, signature, and consensus rule from the snapshot height onward.
+
+What this means in practice:
+- **Fast startup**: the node skips re-validating ancient history and is usable in minutes instead of days.
+- **Full validation going forward**: from the snapshot height on, Mandacaru is a fully validating Bitcoin node — no trusted third party for new blocks.
+- **A trust assumption about pre-snapshot history**: you are trusting that the bundled snapshot matches Bitcoin's true historical chain state. This is the same trade-off as Bitcoin Core's `assumeutxo` and `assumevalid`.
+
+### Even with `assumeutreexo`, a bad accumulator is detectable
+
+Under Utreexo, every transaction input in every new block must come with an inclusion proof against the current accumulator state. If the bundled snapshot were wrong — wrong roots, wrong height, doctored to hide or invent UTXOs — those proofs simply would not verify as honest peers relay real blocks: signatures would check out but inclusion proofs would fail, and Mandacaru would reject the chain rather than follow it.
+
+In other words, a bad snapshot doesn't silently corrupt the node's view of Bitcoin; it makes the node unable to follow the real chain at all. The worst plausible failure mode is a stuck or refusing node, not a node that quietly accepts invalid history. This is what makes the `assumeutreexo` trade-off reasonable in practice: you accept faster startup in exchange for a trust assumption that is self-checking against the live network.
+
+If you want zero trust assumptions, a from-genesis IBD (initial block download) without `assumeutreexo` is not currently exposed in the UI; this can be revisited as Floresta's options evolve.
 
 ## Installation
 
