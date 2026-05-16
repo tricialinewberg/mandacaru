@@ -49,15 +49,11 @@ object SnapshotCodec {
         val networkByte = networkNameToByte(network)
             ?: throw IllegalArgumentException("Unknown network: $network")
         val height = obj.getLong(KEY_HEIGHT)
-        if (height !in 0L..UINT32_MAX) {
-            throw IllegalArgumentException("height out of u32 range: $height")
-        }
+        require(height in 0L..UINT32_MAX) { "height out of u32 range: $height" }
         val leaves = obj.getLong(KEY_LEAVES)
-        if (leaves < 0L) {
-            throw IllegalArgumentException("leaves out of u64 range (negative Long): $leaves")
-        }
+        require(leaves >= 0L) { "leaves out of u64 range (negative Long): $leaves" }
         val blockHashHex = obj.getString(KEY_BLOCK_HASH)
-        val blockHashBytes = hexToBytes(blockHashHex)
+        val blockHashBytes = HexUtils.hexToBytes(blockHashHex)
         require(blockHashBytes.size == 32) { "block_hash must be 32 bytes, got ${blockHashBytes.size}" }
 
         val rootsJson = obj.getJSONArray(KEY_ROOTS)
@@ -65,7 +61,7 @@ object SnapshotCodec {
             "roots length ${rootsJson.length()} out of range [0,$MAX_ROOTS]"
         }
         val roots = Array(rootsJson.length()) { i ->
-            val rBytes = hexToBytes(rootsJson.getString(i))
+            val rBytes = HexUtils.hexToBytes(rootsJson.getString(i))
             require(rBytes.size == 32) { "root[$i] must be 32 bytes" }
             rBytes
         }
@@ -87,9 +83,7 @@ object SnapshotCodec {
         require(body.size >= MIN_BODY_SIZE) { "Compact body too short: ${body.size} < $MIN_BODY_SIZE" }
         val buf = ByteBuffer.wrap(body).order(ByteOrder.LITTLE_ENDIAN)
         val version = buf.get()
-        if (version != FORMAT_VERSION) {
-            throw IllegalArgumentException("Unsupported snapshot format version: $version")
-        }
+        require(version == FORMAT_VERSION) { "Unsupported snapshot format version: $version" }
         val networkByte = buf.get()
         val network = byteToNetworkName(networkByte)
             ?: throw IllegalArgumentException("Unknown network tag byte: $networkByte")
@@ -104,7 +98,7 @@ object SnapshotCodec {
         val roots = Array(rootCount) {
             val r = ByteArray(32)
             buf.get(r)
-            bytesToHex(r)
+            HexUtils.bytesToHex(r)
         }
 
         val rootsJson = org.json.JSONArray()
@@ -113,7 +107,7 @@ object SnapshotCodec {
         return JSONObject().apply {
             put(KEY_VERSION, version.toInt())
             put(KEY_NETWORK, network)
-            put(KEY_BLOCK_HASH, bytesToHex(blockHashBytes))
+            put(KEY_BLOCK_HASH, HexUtils.bytesToHex(blockHashBytes))
             put(KEY_HEIGHT, height)
             put(KEY_LEAVES, leaves)
             put(KEY_ROOTS, rootsJson)
@@ -162,9 +156,7 @@ object SnapshotCodec {
     private fun bech32mDecode(s: String): Pair<String, IntArray> {
         val upper = s.any { it.isUpperCase() }
         val lower = s.any { it.isLowerCase() }
-        if (upper && lower) {
-            throw IllegalArgumentException("Mixed-case bech32 string")
-        }
+        require(!(upper && lower)) { "Mixed-case bech32 string" }
         val lowered = s.lowercase()
         val sepPos = lowered.lastIndexOf('1')
         require(sepPos >= 1) { "Missing HRP separator" }
@@ -246,50 +238,11 @@ object SnapshotCodec {
         return out.toIntArray()
     }
 
-    // Overload: IntArray → ByteArray (for 5→8 bit round-trip)
-    private fun convertBits(data: IntArray, fromBits: Int, toBits: Int, pad: Boolean, asBytes: Boolean): ByteArray {
-        val ints = convertBits(data, fromBits, toBits, pad)
+    private fun convertBits5to8(data: IntArray): ByteArray {
+        val ints = convertBits(data, 5, 8, pad = false)
         return ByteArray(ints.size) { ints[it].toByte() }
     }
 
-    // Public alias used by unpackBody — 5→8 bit conversion that returns bytes.
-    // (Avoids overload ambiguity on the call site.)
-    private fun convertBits5to8(data: IntArray): ByteArray =
-        convertBits(data, 5, 8, pad = false, asBytes = true)
-
-    // ---------------------------------------------------------------------
-    // hex
-    // ---------------------------------------------------------------------
-
-    private fun hexToBytes(hex: String): ByteArray {
-        require(hex.length % 2 == 0) { "Hex string has odd length" }
-        val out = ByteArray(hex.length / 2)
-        for (i in out.indices) {
-            val hi = hexDigit(hex[i * 2])
-            val lo = hexDigit(hex[i * 2 + 1])
-            out[i] = ((hi shl 4) or lo).toByte()
-        }
-        return out
-    }
-
-    private fun hexDigit(c: Char): Int = when (c) {
-        in '0'..'9' -> c - '0'
-        in 'a'..'f' -> 10 + (c - 'a')
-        in 'A'..'F' -> 10 + (c - 'A')
-        else -> throw IllegalArgumentException("Invalid hex digit: '$c'")
-    }
-
-    private fun bytesToHex(bytes: ByteArray): String {
-        val sb = StringBuilder(bytes.size * 2)
-        for (b in bytes) {
-            val v = b.toInt() and 0xFF
-            sb.append(HEX_ALPHABET[v ushr 4])
-            sb.append(HEX_ALPHABET[v and 0x0F])
-        }
-        return sb.toString()
-    }
-
-    private const val HEX_ALPHABET = "0123456789abcdef"
     private const val UINT32_MAX = 0xFFFF_FFFFL
     private const val MAX_ROOTS = 63
 
