@@ -4,6 +4,9 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.jvsena42.mandacaru.data.FlorestaRpc
+import com.github.jvsena42.mandacaru.domain.scan.QrTransactionScanner
+import com.github.jvsena42.mandacaru.domain.scan.ScanState
+import com.github.jvsena42.mandacaru.domain.scan.TransactionDecoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -14,7 +17,9 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
 class TransactionViewModel(
-    private val florestaRpc: FlorestaRpc
+    private val florestaRpc: FlorestaRpc,
+    private val qrScanner: QrTransactionScanner,
+    private val transactionDecoder: TransactionDecoder,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TransactionUiState())
@@ -36,7 +41,74 @@ class TransactionViewModel(
             is TransactionAction.OnRawTxChanged -> {
                 _uiState.update { it.copy(rawTxHex = action.rawTx, broadcastResult = "") }
             }
-            TransactionAction.OnClickBroadcast -> broadcastTransaction()
+            TransactionAction.OnClickBroadcast ->
+                broadcastTransaction(_uiState.value.rawTxHex, clearInput = true)
+            TransactionAction.OnClickScan -> openScanner()
+            TransactionAction.OnDismissScanner -> closeScanner()
+            is TransactionAction.OnQrFrameScanned -> handleScannedFrame(action.payload)
+            is TransactionAction.OnScanPasteSubmitted -> handleScannedFrame(action.text)
+            TransactionAction.OnConfirmBroadcast -> {
+                val hex = _uiState.value.decodedTx?.rawHex ?: return
+                broadcastTransaction(hex, clearInput = false)
+            }
+            TransactionAction.OnDismissConfirmation -> _uiState.update { it.copy(decodedTx = null) }
+        }
+    }
+
+    private fun openScanner() {
+        qrScanner.reset()
+        _uiState.update {
+            it.copy(
+                isScannerVisible = true,
+                scanProgress = 0f,
+                scanError = "",
+                decodedTx = null,
+                broadcastResult = "",
+            )
+        }
+    }
+
+    private fun closeScanner() {
+        qrScanner.reset()
+        _uiState.update { it.copy(isScannerVisible = false, scanProgress = 0f, scanError = "") }
+    }
+
+    private fun handleScannedFrame(payload: String) {
+        if (_uiState.value.isDecoding || _uiState.value.decodedTx != null) return
+        when (val state = qrScanner.ingest(payload)) {
+            is ScanState.Idle -> Unit
+            is ScanState.InProgress ->
+                _uiState.update { it.copy(scanProgress = state.progress, scanError = "") }
+            is ScanState.Error ->
+                _uiState.update { it.copy(scanError = state.reason, scanProgress = 0f) }
+            is ScanState.Complete -> decodePayload(state)
+        }
+    }
+
+    private fun decodePayload(complete: ScanState.Complete) {
+        _uiState.update { it.copy(isDecoding = true, scanError = "") }
+        viewModelScope.launch(Dispatchers.IO) {
+            transactionDecoder.decode(complete.payload, complete.transport)
+                .onSuccess { decoded ->
+                    _uiState.update {
+                        it.copy(
+                            decodedTx = decoded,
+                            isScannerVisible = false,
+                            isDecoding = false,
+                            scanProgress = 0f,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    Log.e(TAG, "decode error: ${error.message}", error)
+                    _uiState.update {
+                        it.copy(
+                            scanError = error.message ?: "Couldn't decode the QR code",
+                            isDecoding = false,
+                            scanProgress = 0f,
+                        )
+                    }
+                }
         }
     }
 
@@ -52,7 +124,7 @@ class TransactionViewModel(
                 return@launch
             }
 
-            if (!txId.matches(Regex("^[a-fA-F0-9]{64}$"))) {
+            if (!txId.matches(SEARCH_REGEX)) {
                 _uiState.update {
                     it.copy(isSearchLoading = false, errorMessage = "Invalid transaction ID format")
                 }
@@ -103,11 +175,11 @@ class TransactionViewModel(
         }
     }
 
-    private fun broadcastTransaction() {
-        val hex = _uiState.value.rawTxHex.trim()
+    private fun broadcastTransaction(rawHex: String, clearInput: Boolean) {
+        val hex = rawHex.trim()
         if (hex.isEmpty()) return
 
-        if (!hex.matches(Regex("^[a-fA-F0-9]+$"))) {
+        if (!hex.matches(BROADCAST_REGEX)) {
             _uiState.update { it.copy(errorMessage = "Invalid hex format") }
             return
         }
@@ -122,7 +194,8 @@ class TransactionViewModel(
                         it.copy(
                             broadcastResult = data.result,
                             isBroadcasting = false,
-                            rawTxHex = ""
+                            decodedTx = null,
+                            rawTxHex = if (clearInput) "" else it.rawTxHex,
                         )
                     }
                 }.onFailure { error ->
@@ -146,5 +219,7 @@ class TransactionViewModel(
     companion object {
         private const val TAG = "TransactionViewModel"
         private const val PERCENTAGE_MULTIPLIER = 100
+        private val SEARCH_REGEX = Regex("^[a-fA-F0-9]{64}$")
+        private val BROADCAST_REGEX = Regex("^[a-fA-F0-9]+$")
     }
 }

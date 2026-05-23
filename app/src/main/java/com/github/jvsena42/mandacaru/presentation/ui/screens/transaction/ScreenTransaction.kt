@@ -30,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.Button
@@ -40,6 +41,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -222,6 +224,19 @@ fun ScreenTransactionContent(
                 }
             }
         }
+
+        if (uiState.isScannerVisible) {
+            TransactionScanSheet(uiState = uiState, onAction = onAction)
+        }
+
+        uiState.decodedTx?.let { decoded ->
+            TransactionConfirmSheet(
+                decoded = decoded,
+                isBroadcasting = uiState.isBroadcasting,
+                onConfirm = { onAction(TransactionAction.OnConfirmBroadcast) },
+                onDismiss = { onAction(TransactionAction.OnDismissConfirmation) },
+            )
+        }
     }
 }
 
@@ -386,6 +401,24 @@ internal fun BroadcastTransactionCard(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(stringResource(R.string.broadcast))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = { onAction(TransactionAction.OnClickScan) },
+                enabled = !uiState.isBroadcasting,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.QrCodeScanner,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = " ${stringResource(R.string.scan_to_broadcast)}",
+                )
             }
 
             AnimatedVisibility(

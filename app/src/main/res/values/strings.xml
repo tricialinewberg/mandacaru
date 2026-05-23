@@ -117,4 +117,35 @@
     <string name="recent_blocks">Recent blocks</string>
     <string name="coming_soon">Coming soon</string>
     <string name="block_explorer_hint">Detailed block and mempool data are coming in a future update.</string>
+
+    <string name="scan_to_broadcast">Scan to broadcast</string>
+    <string name="scan_transaction_title">Scan signed transaction</string>
+    <string name="scan_transaction_hint">Point the camera at a QR from your signing device. Animated (multi-part) QR codes are supported.</string>
+    <string name="scan_progress">Receiving… %1$d%%</string>
+    <string name="scan_decoding">Decoding…</string>
+    <string name="scan_paste">Paste instead</string>
+    <string name="scan_back_to_camera">Back to camera</string>
+    <string name="scan_paste_hint">Paste a signed transaction hex, a PSBT (base64 or hex), or a ur:… string.</string>
+    <string name="scan_paste_placeholder">0200000001… / cHNidP8B… / ur:crypto-psbt/…</string>
+    <string name="scan_submit">Decode</string>
+
+    <string name="confirm_broadcast_title">Broadcast this transaction?</string>
+    <string name="confirm_decoded_from">Decoded from %1$s (%2$s)</string>
+    <string name="confirm_source_psbt">PSBT</string>
+    <string name="confirm_source_transaction">raw transaction</string>
+    <string name="confirm_transport_single">single QR</string>
+    <string name="confirm_transport_ur">animated UR</string>
+    <string name="confirm_transport_bbqr">animated BBQr</string>
+    <string name="confirm_tx_id">Transaction ID</string>
+    <string name="confirm_inputs">Inputs</string>
+    <string name="confirm_outputs">Outputs</string>
+    <string name="confirm_total_out">Total out</string>
+    <string name="confirm_fee">Fee</string>
+    <string name="confirm_fee_rate">Fee rate</string>
+    <string name="confirm_virtual_size">Virtual size</string>
+    <string name="confirm_fee_unavailable">Unavailable</string>
+    <string name="confirm_fee_unavailable_hint">A raw transaction doesn\'t include input amounts, so the fee can\'t be derived. Use a PSBT to see the fee.</string>
+    <string name="value_sats">%1$s sats</string>
+    <string name="value_sat_vb">%1$s sat/vB</string>
+    <string name="value_vbytes">%1$s vBytes</string>
 </resources>
