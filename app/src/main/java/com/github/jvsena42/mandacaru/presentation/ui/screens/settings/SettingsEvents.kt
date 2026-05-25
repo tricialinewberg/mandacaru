@@ -4,6 +4,5 @@ sealed interface SettingsEvents {
     data object OnNetworkChanged : SettingsEvents
     data object OnBirthdayChanged : SettingsEvents
     data class OnExportLogs(val uri: android.net.Uri) : SettingsEvents
-    data object RequestInstallPermission : SettingsEvents
     data class OpenReleasePage(val url: String) : SettingsEvents
 }

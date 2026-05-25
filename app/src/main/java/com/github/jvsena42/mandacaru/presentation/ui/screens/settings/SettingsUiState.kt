@@ -28,4 +28,5 @@ data class SettingsUiState(
     val isBirthdayPickerOpen: Boolean = false,
     val pendingBirthdayYear: Int? = null,
     val updateStatus: UpdateStatus = UpdateStatus(),
+    val isDownloading: Boolean = false,
 )

@@ -162,17 +162,17 @@ class SettingsViewModel(
     }
 
     private fun downloadUpdate() {
+        if (_uiState.value.isDownloading) return
         val status = _uiState.value.updateStatus
         val url = status.apkDownloadUrl
         if (url == null) {
             viewModelScope.sendEvent(SettingsEvents.OpenReleasePage(status.releasePageUrl))
             return
         }
-        if (!appUpdateDownloader.canInstall()) {
-            viewModelScope.sendEvent(SettingsEvents.RequestInstallPermission)
-            return
+        _uiState.update { it.copy(isDownloading = true) }
+        appUpdateDownloader.enqueue(url, "Mandacaru-${status.latestVersion}.apk") {
+            _uiState.update { it.copy(isDownloading = false) }
         }
-        appUpdateDownloader.enqueue(url, "Mandacaru-${status.latestVersion}.apk")
     }
 
     private fun applyBirthdayYearAndRestart() {

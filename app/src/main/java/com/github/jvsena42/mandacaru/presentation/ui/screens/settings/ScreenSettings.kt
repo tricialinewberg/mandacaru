@@ -1,10 +1,6 @@
 package com.github.jvsena42.mandacaru.presentation.ui.screens.settings
 
 import android.content.Intent
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.net.toUri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -54,6 +50,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -121,11 +118,6 @@ fun ScreenSettings(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val shareLogsTitle = stringResource(R.string.share_logs)
-    val installPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        viewModel.onAction(SettingsAction.OnClickDownloadUpdate)
-    }
     ScreenSettings(
         uiState = uiState,
         onAction = viewModel::onAction,
@@ -145,14 +137,6 @@ fun ScreenSettings(
                     }
                     context.startActivity(
                         Intent.createChooser(shareIntent, shareLogsTitle)
-                    )
-                }
-                is SettingsEvents.RequestInstallPermission -> {
-                    installPermissionLauncher.launch(
-                        Intent(
-                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                            "package:${context.packageName}".toUri()
-                        )
                     )
                 }
                 is SettingsEvents.OpenReleasePage -> uriHandler.openUri(event.url)
@@ -777,6 +761,7 @@ private fun ScreenSettings(
 
                             UpdateRow(
                                 updateStatus = uiState.updateStatus,
+                                isDownloading = uiState.isDownloading,
                                 onAction = onAction,
                             )
                         }
@@ -893,6 +878,7 @@ private fun BirthdayRestartConfirmDialog(
 @Composable
 private fun UpdateRow(
     updateStatus: UpdateStatus,
+    isDownloading: Boolean,
     onAction: (SettingsAction) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -922,16 +908,27 @@ private fun UpdateRow(
                 Spacer(modifier = Modifier.height(12.dp))
                 Button(
                     onClick = { onAction(SettingsAction.OnClickDownloadUpdate) },
+                    enabled = !isDownloading,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                 ) {
-                    Icon(
-                        Icons.Outlined.Download,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(stringResource(R.string.download_update))
+                    if (isDownloading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text(stringResource(R.string.downloading_update))
+                    } else {
+                        Icon(
+                            Icons.Outlined.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text(stringResource(R.string.download_update))
+                    }
                 }
             }
 
