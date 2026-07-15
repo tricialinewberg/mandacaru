@@ -27,6 +27,7 @@ import com.github.jvsena42.mandacaru.domain.scan.DefaultDescriptorQrScanner
 import com.github.jvsena42.mandacaru.domain.scan.DefaultQrTransactionScanner
 import com.github.jvsena42.mandacaru.domain.scan.DescriptorQrScanner
 import com.github.jvsena42.mandacaru.domain.scan.QrTransactionScanner
+import com.github.jvsena42.mandacaru.domain.coinjoin.CoinjoinEngine
 import com.github.jvsena42.mandacaru.domain.nostr.NostrClient
 import com.github.jvsena42.mandacaru.domain.scan.TransactionDecoder
 import com.github.jvsena42.mandacaru.domain.wallet.WalletManager
@@ -132,4 +133,11 @@ val dataModule = module {
     single<WalletKeyStore> { WalletKeyStoreImpl(context = androidContext()) }
     single<WalletManager> { WalletManagerImpl(keyStore = get()) }
     single<NostrClient> { NostrClientImpl() }
+    single {
+        CoinjoinEngine(
+            nostrClient = get(),
+            walletManager = get(),
+            florestaRpc = get(),
+        )
+    }
 }

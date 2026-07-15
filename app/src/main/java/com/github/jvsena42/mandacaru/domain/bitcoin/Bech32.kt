@@ -107,5 +107,13 @@ object SegwitAddress {
         return encode(hrp, witnessVersion = 0, program = pubKeyHash)
     }
 
+    /** Decodes a segwit v0 address back to its raw witness program bytes, or null if invalid. */
+    fun decodeProgram(address: String): ByteArray? {
+        val (_, data, _) = Bech32.decode(address) ?: return null
+        if (data.isEmpty()) return null
+        val words = Bech32.convertBits(data.drop(1).toIntArray(), 5, 8, false) ?: return null
+        return words.map { it.toByte() }.toByteArray()
+    }
+
     private const val HASH160_SIZE = 20
 }
