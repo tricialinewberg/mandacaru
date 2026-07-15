@@ -14,6 +14,7 @@ import com.github.jvsena42.mandacaru.data.floresta.FlorestaDaemonImpl
 import com.github.jvsena42.mandacaru.data.floresta.FlorestaRpcImpl
 import com.github.jvsena42.mandacaru.data.network.NetworkPolicy
 import com.github.jvsena42.mandacaru.data.network.NetworkPolicyManager
+import com.github.jvsena42.mandacaru.data.nostr.NostrClientImpl
 import com.github.jvsena42.mandacaru.data.update.AppUpdateRepositoryImpl
 import com.github.jvsena42.mandacaru.data.wallet.WalletKeyStore
 import com.github.jvsena42.mandacaru.data.wallet.WalletKeyStoreImpl
@@ -26,6 +27,7 @@ import com.github.jvsena42.mandacaru.domain.scan.DefaultDescriptorQrScanner
 import com.github.jvsena42.mandacaru.domain.scan.DefaultQrTransactionScanner
 import com.github.jvsena42.mandacaru.domain.scan.DescriptorQrScanner
 import com.github.jvsena42.mandacaru.domain.scan.QrTransactionScanner
+import com.github.jvsena42.mandacaru.domain.nostr.NostrClient
 import com.github.jvsena42.mandacaru.domain.scan.TransactionDecoder
 import com.github.jvsena42.mandacaru.domain.wallet.WalletManager
 import com.github.jvsena42.mandacaru.presentation.ui.screens.blockchain.BlockchainViewModel
@@ -129,4 +131,5 @@ val dataModule = module {
     single<TransactionDecoder> { BdkTransactionDecoder() }
     single<WalletKeyStore> { WalletKeyStoreImpl(context = androidContext()) }
     single<WalletManager> { WalletManagerImpl(keyStore = get()) }
+    single<NostrClient> { NostrClientImpl() }
 }
