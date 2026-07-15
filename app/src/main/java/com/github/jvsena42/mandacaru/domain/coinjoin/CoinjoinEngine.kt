@@ -45,6 +45,10 @@ class CoinjoinEngine(
             .filter { it.kind == NostrKind.POOL_ANNOUNCEMENT }
             .mapNotNull { event -> runCatching { PoolContent.fromJson(JSONObject(event.content)) }.getOrNull() }
 
+    /** Raw encrypted DM events (kind 4) from every connected relay - callers decrypt with their own key. */
+    fun directMessages(): Flow<NostrEvent> =
+        nostrClient.incomingEvents.filter { it.kind == NostrKind.ENCRYPTED_DM }
+
     suspend fun connectAndDiscover(relays: List<String>) {
         nostrClient.connect(relays)
         nostrClient.subscribe(

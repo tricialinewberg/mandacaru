@@ -32,11 +32,13 @@ import com.github.jvsena42.mandacaru.domain.nostr.NostrClient
 import com.github.jvsena42.mandacaru.domain.scan.TransactionDecoder
 import com.github.jvsena42.mandacaru.domain.wallet.WalletManager
 import com.github.jvsena42.mandacaru.presentation.ui.screens.blockchain.BlockchainViewModel
+import com.github.jvsena42.mandacaru.presentation.ui.screens.coinjoin.CoinjoinViewModel
 import com.github.jvsena42.mandacaru.presentation.ui.screens.logs.DeveloperLogsViewModel
 import com.github.jvsena42.mandacaru.presentation.ui.screens.main.MainViewModel
 import com.github.jvsena42.mandacaru.presentation.ui.screens.node.NodeViewModel
 import com.github.jvsena42.mandacaru.presentation.ui.screens.transaction.TransactionViewModel
 import com.github.jvsena42.mandacaru.presentation.ui.screens.settings.SettingsViewModel
+import com.github.jvsena42.mandacaru.presentation.ui.screens.wallet.WalletViewModel
 import com.google.gson.Gson
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -101,6 +103,20 @@ val presentationModule = module {
         )
     }
     viewModel { BlockchainViewModel(florestaRpc = get()) }
+    viewModel {
+        WalletViewModel(
+            walletManager = get(),
+            florestaRpc = get(),
+            preferencesDataSource = get(),
+        )
+    }
+    viewModel {
+        CoinjoinViewModel(
+            engine = get(),
+            florestaRpc = get(),
+            preferencesDataSource = get(),
+        )
+    }
 }
 
 val dataModule = module {
