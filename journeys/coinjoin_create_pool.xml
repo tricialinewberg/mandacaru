@@ -1,0 +1,18 @@
+<journey name="CoinJoin create pool dialog">
+    <description>
+        Opens the create-pool dialog from the CoinJoin screen, enters a denomination,
+        and confirms the app surfaces a status/error rather than crashing. A full round
+        needs real relay peers and a matching UTXO, so this only exercises the local
+        create-pool UI flow.
+    </description>
+    <actions>
+        <action>Launch the Mandacaru app and wait for the splash screen to dismiss (poll until nav_node is present)</action>
+        <action>Tap the CoinJoin navigation item (nav_coinjoin)</action>
+        <action>Verify the pool list (coinjoin_pool_list) is displayed</action>
+        <action>Tap the "New pool" button (button_create_pool)</action>
+        <action>Verify a dialog titled "Create a pool" is displayed</action>
+        <action>Type "100000" into the denomination field (input_denomination)</action>
+        <action>Tap the "Create" button (button_confirm_create_pool)</action>
+        <action>Verify the app shows either an active-round status or an error snackbar, and has not crashed</action>
+    </actions>
+</journey>

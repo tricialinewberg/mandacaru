@@ -43,7 +43,7 @@ Navigation is a `HorizontalPager`, not a `NavController`, and adjacent pages sta
 composed — so content from the neighbouring screen can be present (off-screen) in the
 tree. The reliable signal for "which screen is active" is the **selected nav item**: the
 active destination's nav element carries `"state":["selected"]` in the layout dump
-(e.g. `nav_blockchain` is selected on the Blockchain screen). Combine that with a
+(e.g. `nav_wallet` is selected on the Wallet screen). Combine that with a
 screen-unique element (see tables below) when an extra check is wanted.
 
 Container/screen-root tags are intentionally not used: a Compose layout node carrying
@@ -66,8 +66,8 @@ when adding or renaming a tag.
 | resource-id        | element                                  |
 |-------------------|------------------------------------------|
 | `nav_node`        | Node Info bottom-nav / rail item         |
-| `nav_blockchain`  | Blockchain nav item                      |
-| `nav_transaction` | Transactions nav item                    |
+| `nav_wallet`      | Wallet nav item                          |
+| `nav_coinjoin`    | CoinJoin nav item                        |
 | `nav_settings`    | Settings nav item                        |
 
 ### Node screen (`node/ScreenNode.kt`)
@@ -98,22 +98,39 @@ shows a clipboard-import **snackbar** ("Accumulator found on clipboard" + an "Im
 action) on open. The snackbar is part of the Scaffold subtree, so its text and action
 **are** targetable by text in `android layout`.
 
-### Blockchain screen (`blockchain/ScreenBlockchain.kt`)
+### Wallet screen (`wallet/ScreenWallet.kt`)
 
-| resource-id                  | element                  |
-|-----------------------------|--------------------------|
-| `blockchain_block_height`   | current block height     |
-| `button_view_latest_block`  | "View latest block"      |
-| `input_block`               | block lookup field       |
+| resource-id                | element                                        |
+|----------------------------|-------------------------------------------------|
+| `wallet_balance_card`      | balance card container                          |
+| `wallet_balance`           | balance value (sats)                            |
+| `button_new_address`       | "Generate address" / "New address"              |
+| `wallet_receive_address`   | the currently displayed receive address text    |
+| `button_reveal_seed`       | "Reveal seed phrase" (opens the backup dialog)  |
 
-### Transactions screen (`transaction/ScreenTransaction.kt`)
+`button_reveal_seed` opens an `AlertDialog` with the mnemonic words
+(`wallet_seed_phrase`). Per the popup caveat below, dialog content does not
+surface as `resource-id` - assert on it by text (the numbered word list), and
+dismiss via the "Done" button by text.
 
-| resource-id               | element                       |
-|--------------------------|-------------------------------|
-| `input_txid`             | transaction-id lookup field   |
-| `input_rawtx`            | raw-tx broadcast field        |
-| `button_broadcast`       | "Broadcast"                   |
-| `button_scan_broadcast`  | "Scan to broadcast"           |
+### CoinJoin screen (`coinjoin/ScreenCoinjoin.kt`)
+
+| resource-id                     | element                                     |
+|----------------------------------|----------------------------------------------|
+| `button_create_pool`            | FAB that opens the create-pool dialog        |
+| `coinjoin_pool_list`            | the discovered-pools list container          |
+| `coinjoin_active_status`        | status text once this device has joined/created a round |
+| `pool_item_<id>`                | a discovered pool's card (id varies per pool)|
+| `button_join_<id>`              | "Join" button on a given pool's card         |
+
+`button_create_pool` opens an `AlertDialog` (`input_denomination`,
+`button_confirm_create_pool`) - per the popup caveat, target its field/button by
+text/hint rather than `resource-id` while the dialog is open.
+
+CoinJoin rounds need real relay connectivity and a UTXO that exactly matches a
+pool's denomination to progress past "waiting for peers" - journeys against a
+single device should assert on the create/join UI responding, not on a
+completed round.
 
 ### Settings screen (`settings/ScreenSettings.kt`)
 

@@ -1,0 +1,15 @@
+<journey name="Wallet seed backup">
+    <description>
+        Opens the seed-phrase backup dialog and verifies it shows a 12-word mnemonic,
+        then dismisses it - exercising the encrypted-storage reveal path without ever
+        leaving the phrase logged or crashing the app.
+    </description>
+    <actions>
+        <action>Launch the Mandacaru app and wait for the splash screen to dismiss (poll until nav_node is present)</action>
+        <action>Tap the Wallet navigation item (nav_wallet)</action>
+        <action>Tap the "Reveal seed phrase" button (button_reveal_seed)</action>
+        <action>Verify a dialog titled "Your seed phrase" is displayed with 12 numbered words</action>
+        <action>Tap the "Done" button to dismiss the dialog</action>
+        <action>Verify the Wallet screen (wallet_balance_card) is displayed and the app has not crashed</action>
+    </actions>
+</journey>

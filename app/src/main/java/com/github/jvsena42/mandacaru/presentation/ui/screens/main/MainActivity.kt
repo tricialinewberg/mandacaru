@@ -66,12 +66,12 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import com.github.jvsena42.mandacaru.presentation.service.FlorestaService
-import com.github.jvsena42.mandacaru.presentation.ui.screens.blockchain.ScreenBlockchain
+import com.github.jvsena42.mandacaru.presentation.ui.screens.coinjoin.ScreenCoinjoin
 import com.github.jvsena42.mandacaru.presentation.ui.screens.logs.ScreenDeveloperLogs
 import com.github.jvsena42.mandacaru.presentation.ui.screens.node.ScreenNode
 import com.github.jvsena42.mandacaru.presentation.ui.screens.settings.ScreenSettings
 import com.github.jvsena42.mandacaru.presentation.ui.screens.splash.SplashScreen
-import com.github.jvsena42.mandacaru.presentation.ui.screens.transaction.ScreenTransaction
+import com.github.jvsena42.mandacaru.presentation.ui.screens.wallet.ScreenWallet
 import com.github.jvsena42.mandacaru.presentation.ui.theme.MandacaruTheme
 import com.github.jvsena42.mandacaru.presentation.utils.NotificationPermissionHelper
 import com.github.jvsena42.mandacaru.presentation.utils.rememberAdaptiveLayout
@@ -323,10 +323,10 @@ private fun MainScreen(
                         restartApplication = restartApplication,
                         bottomContentPadding = bottomBarPadding,
                     )
-                    Destinations.BLOCKCHAIN -> ScreenBlockchain(
+                    Destinations.WALLET -> ScreenWallet(
                         bottomContentPadding = bottomBarPadding,
                     )
-                    Destinations.TRANSACTION -> ScreenTransaction(
+                    Destinations.COINJOIN -> ScreenCoinjoin(
                         bottomContentPadding = bottomBarPadding,
                     )
                     Destinations.SETTINGS -> ScreenSettings(
