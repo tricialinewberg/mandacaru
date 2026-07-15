@@ -128,6 +128,10 @@ dependencies {
 
     implementation(libs.hummingbird)
     implementation(libs.bdk.android)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.secp256k1.kmp)
+    implementation(libs.secp256k1.kmp.jni.android)
+    implementation(libs.bouncycastle.prov)
 
     implementation(project.dependencies.platform(libs.koin.bom))
     implementation(libs.koin.core)

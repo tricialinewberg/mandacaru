@@ -15,6 +15,9 @@ import com.github.jvsena42.mandacaru.data.floresta.FlorestaRpcImpl
 import com.github.jvsena42.mandacaru.data.network.NetworkPolicy
 import com.github.jvsena42.mandacaru.data.network.NetworkPolicyManager
 import com.github.jvsena42.mandacaru.data.update.AppUpdateRepositoryImpl
+import com.github.jvsena42.mandacaru.data.wallet.WalletKeyStore
+import com.github.jvsena42.mandacaru.data.wallet.WalletKeyStoreImpl
+import com.github.jvsena42.mandacaru.data.wallet.WalletManagerImpl
 import com.github.jvsena42.mandacaru.domain.floresta.FlorestaDaemon
 import com.github.jvsena42.mandacaru.domain.floresta.UtreexoBridgeAutoConnect
 import com.github.jvsena42.mandacaru.domain.floresta.UtreexoSnapshotService
@@ -24,6 +27,7 @@ import com.github.jvsena42.mandacaru.domain.scan.DefaultQrTransactionScanner
 import com.github.jvsena42.mandacaru.domain.scan.DescriptorQrScanner
 import com.github.jvsena42.mandacaru.domain.scan.QrTransactionScanner
 import com.github.jvsena42.mandacaru.domain.scan.TransactionDecoder
+import com.github.jvsena42.mandacaru.domain.wallet.WalletManager
 import com.github.jvsena42.mandacaru.presentation.ui.screens.blockchain.BlockchainViewModel
 import com.github.jvsena42.mandacaru.presentation.ui.screens.logs.DeveloperLogsViewModel
 import com.github.jvsena42.mandacaru.presentation.ui.screens.main.MainViewModel
@@ -123,4 +127,6 @@ val dataModule = module {
     factory<QrTransactionScanner> { DefaultQrTransactionScanner() }
     factory<DescriptorQrScanner> { DefaultDescriptorQrScanner() }
     single<TransactionDecoder> { BdkTransactionDecoder() }
+    single<WalletKeyStore> { WalletKeyStoreImpl(context = androidContext()) }
+    single<WalletManager> { WalletManagerImpl(keyStore = get()) }
 }
