@@ -352,7 +352,10 @@ class CoinjoinViewModel(
         _uiState.update { it.copy(errorMessage = message, isLoading = false) }
     }
 
-    /** Reports a timed-out round as failed: same snackbar as [showError], plus a persistent status and a cleared active pool so the user can start over. */
+    /**
+     * Reports a timed-out round as failed: same snackbar as [showError], plus a persistent
+     * status and a cleared active pool so the user can start over.
+     */
     private fun failRound(message: String) {
         Log.w(TAG, message)
         _uiState.update { it.copy(activePoolStatus = message, errorMessage = message, activePoolId = null, isLoading = false) }

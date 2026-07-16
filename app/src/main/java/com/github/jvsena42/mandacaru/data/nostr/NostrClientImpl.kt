@@ -45,9 +45,9 @@ class NostrClientImpl(private val preferencesDataSource: PreferencesDataSource) 
     }
 
     private fun buildClient(proxy: Proxy?): OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS) // long-lived socket, no read timeout
-        .pingInterval(30, TimeUnit.SECONDS)
+        .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
         .apply { proxy?.let { proxy(it) } }
         .build()
 
@@ -143,5 +143,7 @@ class NostrClientImpl(private val preferencesDataSource: PreferencesDataSource) 
         const val TAG = "NostrClientImpl"
         const val EVENT_BUFFER = 64
         const val NORMAL_CLOSURE = 1000
+        const val CONNECT_TIMEOUT_SECONDS = 10L
+        const val PING_INTERVAL_SECONDS = 30L
     }
 }
