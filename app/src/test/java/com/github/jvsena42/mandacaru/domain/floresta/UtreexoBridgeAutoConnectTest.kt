@@ -12,6 +12,7 @@ import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockc
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetPeerInfoResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTransactionResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListDescriptorsResponse
+import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListUnspentResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.PeerInfoResult
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ResultAddNode
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.SendRawTransactionResponse
@@ -197,6 +198,7 @@ private class FakeFlorestaRpc(
     override fun stop(): Flow<Result<JSONObject>> = TODO("not used")
     override fun getTransaction(txId: String): Flow<Result<GetTransactionResponse>> = TODO("not used")
     override fun listDescriptors(): Flow<Result<ListDescriptorsResponse>> = TODO("not used")
+    override fun listUnspent(minConfirmations: Int): Flow<Result<ListUnspentResponse>> = TODO("not used")
     override fun getBlockchainInfo(): Flow<Result<GetBlockchainInfoResponse>> = TODO("not used")
     override fun getUptime(): Flow<Result<UptimeResponse>> = TODO("not used")
     override fun getBlockHash(height: Int): Flow<Result<GetBlockHashResponse>> = TODO("not used")
