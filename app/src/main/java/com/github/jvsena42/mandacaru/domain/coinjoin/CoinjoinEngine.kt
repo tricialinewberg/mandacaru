@@ -115,7 +115,12 @@ class CoinjoinEngine(
             subscriptionId = "round-$publicKeyHex",
             filter = NostrFilter(kinds = listOf(NostrKind.ENCRYPTED_DM), pTags = listOf(publicKeyHex)),
         )
-        LocalPoolContent(pool = pool, ephemeralPrivateKeyHex = privateKey.toHex(), registeredOutputAddress = outputAddress)
+        LocalPoolContent(
+            pool = pool,
+            ephemeralPrivateKeyHex = privateKey.toHex(),
+            registeredOutputAddress = outputAddress,
+            registeredInputs = listOf(registration),
+        )
     }
 
     /** Called by the pool creator once [pool.peers] registrations have arrived, to fan the agreed output list back out. */

@@ -145,6 +145,11 @@ dependencies {
     testImplementation(libs.org.json)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockito.core)
+    // secp256k1-kmp resolves the "android" JNI native lib for this module's classpath, since the
+    // app is a single-platform Android target - but unit tests execute on the host JVM, which
+    // can't load Android's Bionic-linked .so. Pull the desktop-native artifact for tests only, so
+    // NostrCrypto (BIP340/ECDH, used throughout the CoinJoin round) actually works under `test`.
+    testImplementation(libs.secp256k1.kmp.jni.jvm)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
