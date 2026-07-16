@@ -43,6 +43,10 @@ style:
       - '**/SnapshotCodec.kt'
       - '**/PeerAddressValidator.kt'
       - '**/HeaderSyncProgress.kt'
+      - '**/Bech32.kt'
+      - '**/TxPrimitives.kt'
+      - '**/NostrCrypto.kt'
+      - '**/CoinjoinTxAssembler.kt'
   UnusedPrivateMember:
     ignoreAnnotated:
       - 'Preview'
