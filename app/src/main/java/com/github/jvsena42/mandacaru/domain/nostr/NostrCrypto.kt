@@ -57,9 +57,9 @@ object NostrCrypto {
     /** ECDH shared secret (NIP-04): the x-coordinate of privateKey * theirPubKey. */
     fun sharedSecret(privateKey: ByteArray, theirPubKeyXOnlyHex: String): ByteArray {
         val theirCompressed = byteArrayOf(0x02) + TxPrimitives.hexToBytes(theirPubKeyXOnlyHex)
+        // pubKeyTweakMul already returns the uncompressed (65-byte) point.
         val point = Secp256k1.pubKeyTweakMul(theirCompressed, privateKey)
-        val uncompressed = Secp256k1.pubkeyDecompress(point)
-        return uncompressed.copyOfRange(1, 33)
+        return point.copyOfRange(1, 33)
     }
 
     /** NIP-04: AES-256-CBC, content = base64(ciphertext) + "?iv=" + base64(iv). */

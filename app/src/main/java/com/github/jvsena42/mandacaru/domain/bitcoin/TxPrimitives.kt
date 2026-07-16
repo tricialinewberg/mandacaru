@@ -73,6 +73,15 @@ object TxPrimitives {
         out.write(scriptPubKey)
     }
 
+    /** The input being signed, per BIP143's sighash preimage fields. */
+    data class SighashInput(
+        val outpointTxidBE: ByteArray,
+        val vout: Int,
+        val pubKeyHash: ByteArray,
+        val amountSats: Long,
+        val sequence: Long,
+    )
+
     /**
      * BIP143 sighash preimage for a `SIGHASH_ALL | ANYONECANPAY` (0x81) P2WPKH input.
      * Under ANYONECANPAY, `hashPrevouts`/`hashSequence` are zeroed - the signer commits
@@ -81,11 +90,7 @@ object TxPrimitives {
      * assembled incrementally: each peer signs before the other inputs exist.
      */
     fun sighashAllAnyoneCanPay(
-        outpointTxidBE: ByteArray,
-        vout: Int,
-        pubKeyHash: ByteArray,
-        amountSats: Long,
-        sequence: Long,
+        input: SighashInput,
         outputs: List<Pair<ByteArray, Long>>,
         lockTime: Long,
     ): ByteArray {
@@ -93,11 +98,11 @@ object TxPrimitives {
         preimage.write(le(TX_VERSION, 4)) // nVersion
         preimage.write(ZERO_HASH) // hashPrevouts (ANYONECANPAY)
         preimage.write(ZERO_HASH) // hashSequence (ANYONECANPAY)
-        preimage.write(reversed(outpointTxidBE)) // outpoint txid (internal order)
-        preimage.write(le(vout.toLong(), 4)) // outpoint index
-        preimage.write(p2wpkhScriptCode(pubKeyHash)) // scriptCode
-        preimage.write(le(amountSats, 8)) // amount
-        preimage.write(le(sequence, 4)) // nSequence
+        preimage.write(reversed(input.outpointTxidBE)) // outpoint txid (internal order)
+        preimage.write(le(input.vout.toLong(), 4)) // outpoint index
+        preimage.write(p2wpkhScriptCode(input.pubKeyHash)) // scriptCode
+        preimage.write(le(input.amountSats, 8)) // amount
+        preimage.write(le(input.sequence, 4)) // nSequence
         preimage.write(hashOutputs(outputs)) // hashOutputs (SIGHASH_ALL commits to all outputs)
         preimage.write(le(lockTime, 4)) // nLocktime
         preimage.write(le(SIGHASH_ALL_ANYONECANPAY, 4)) // nHashType

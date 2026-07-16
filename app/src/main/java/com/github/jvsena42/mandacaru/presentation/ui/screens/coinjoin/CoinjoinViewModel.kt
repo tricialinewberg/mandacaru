@@ -81,7 +81,7 @@ class CoinjoinViewModel(
                 _uiState.update { it.copy(activePoolId = local.pool.id, activePoolStatus = "Waiting for peers to join…") }
                 val ownRegistration = engine.registerInput(network, local.pool, utxo, prevTxHex).getOrNull()
                 if (ownRegistration != null) {
-                    runRound(network, local.pool, local.ephemeralPrivateKeyHex, isCreator = true)
+                    runRound(local.pool, local.ephemeralPrivateKeyHex, isCreator = true)
                 }
             }.onFailure { showError(it.message ?: "Failed to create pool") }
         }
@@ -98,7 +98,7 @@ class CoinjoinViewModel(
             engine.registerInput(network, pool, utxo, prevTxHex)
                 .onSuccess { local ->
                     _uiState.update { it.copy(activePoolId = pool.id, activePoolStatus = "Registered - waiting for the round to fill…") }
-                    runRound(network, pool, local.ephemeralPrivateKeyHex, isCreator = false)
+                    runRound(pool, local.ephemeralPrivateKeyHex, isCreator = false)
                 }
                 .onFailure { showError(it.message ?: "Failed to join pool") }
         }
@@ -111,7 +111,7 @@ class CoinjoinViewModel(
      * Kept intentionally simple (no timeout/retry handling yet) for this
      * first port - see the PR notes.
      */
-    private suspend fun runRound(network: FlorestaNetwork, pool: PoolContent, myPrivateKeyHex: String, isCreator: Boolean) {
+    private suspend fun runRound(pool: PoolContent, myPrivateKeyHex: String, isCreator: Boolean) {
         // Non-creator peers just wait for the creator to reach out with the
         // final output list, then sign and submit - handled inline below.
         if (!isCreator) return

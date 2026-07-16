@@ -106,11 +106,13 @@ class WalletManagerImpl(
             val outputs = allOutputs.map { TxPrimitives.hexToBytes(it.scriptPubKeyHex) to it.amountSats }
 
             val sighash = TxPrimitives.sighashAllAnyoneCanPay(
-                outpointTxidBE = txidBytes,
-                vout = input.vout,
-                pubKeyHash = pubKeyHash,
-                amountSats = input.amountSats,
-                sequence = sequence,
+                input = TxPrimitives.SighashInput(
+                    outpointTxidBE = txidBytes,
+                    vout = input.vout,
+                    pubKeyHash = pubKeyHash,
+                    amountSats = input.amountSats,
+                    sequence = sequence,
+                ),
                 outputs = outputs,
                 lockTime = lockTime,
             )
