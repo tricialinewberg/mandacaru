@@ -145,6 +145,9 @@ completed round.
 | `toggle_advanced_features`  | "Advanced features" switch (gates the Developer Tools section) |
 | `button_view_logs`          | "View logs" (opens the full-screen log viewer) |
 | `button_export_logs`        | "Export" (share the full debug.log) — inside Developer Tools |
+| `toggle_tor`                | "Route CoinJoin over Tor" switch (inside the Tor section) |
+| `input_tor_socks_host`      | Tor SOCKS proxy host field — only rendered while `toggle_tor` is on |
+| `input_tor_socks_port`      | Tor SOCKS proxy port field — only rendered while `toggle_tor` is on |
 
 `button_copy_descriptor` is applied to each loaded descriptor row, so the tag repeats once
 per descriptor — target the first when more than one is present. Tapping a row copies the
@@ -160,6 +163,14 @@ separate window (per the popup caveat below), so their controls — "Paste inste
 The Data usage section's `toggle_mobile_data` switch is off by default (Wi-Fi only);
 turning it on persists the preference and restarts the app. Expand the "Data usage"
 section by text before asserting on it.
+
+`toggle_tor` is off by default and both text fields are blank (they only show
+"127.0.0.1"/"9050" as **placeholder** text, matching Orbot's default SOCKS port — the
+stored value stays empty until the user actually types something). Expand the "Tor"
+section by text before asserting on it. When on, CoinJoin's create/join actions
+probe the configured host:port before proceeding and block with a snackbar if nothing
+is listening there — so a journey that turns this on without a running proxy should
+expect CoinJoin actions to fail, not hang.
 
 `toggle_advanced_features` is off by default. The **Developer Tools** section (and its
 `button_view_logs` / `button_export_logs`) only renders once the toggle is on. Expand

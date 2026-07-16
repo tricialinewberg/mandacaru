@@ -1,6 +1,8 @@
 package com.github.jvsena42.mandacaru.data.nostr
 
 import android.util.Log
+import com.github.jvsena42.mandacaru.data.PreferencesDataSource
+import com.github.jvsena42.mandacaru.data.network.resolveTorProxySettings
 import com.github.jvsena42.mandacaru.domain.nostr.NostrClient
 import com.github.jvsena42.mandacaru.domain.nostr.NostrEvent
 import com.github.jvsena42.mandacaru.domain.nostr.NostrFilter
@@ -12,16 +14,15 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 import org.json.JSONArray
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class NostrClientImpl : NostrClient {
+class NostrClientImpl(private val preferencesDataSource: PreferencesDataSource) : NostrClient {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS) // long-lived socket, no read timeout
-        .pingInterval(30, TimeUnit.SECONDS)
-        .build()
+    @Volatile
+    private var client: OkHttpClient = buildClient(proxy = null)
 
     private val sockets = ConcurrentHashMap<String, WebSocket>()
     private val activeSubscriptions = ConcurrentHashMap<String, NostrFilter>()
@@ -31,8 +32,24 @@ class NostrClientImpl : NostrClient {
     override val incomingEvents = _incomingEvents.asSharedFlow()
 
     override suspend fun connect(relayUrls: List<String>) {
+        val settings = preferencesDataSource.resolveTorProxySettings()
+        if (settings.enabled && settings.port == null) {
+            Log.w(TAG, "Tor is enabled but the configured SOCKS port is invalid - refusing to connect over clearnet")
+            return
+        }
+        client = buildClient(
+            proxy = settings.port?.takeIf { settings.enabled }
+                ?.let { port -> Proxy(Proxy.Type.SOCKS, InetSocketAddress(settings.host, port)) },
+        )
         relayUrls.forEach { url -> connectToRelay(url) }
     }
+
+    private fun buildClient(proxy: Proxy?): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS) // long-lived socket, no read timeout
+        .pingInterval(30, TimeUnit.SECONDS)
+        .apply { proxy?.let { proxy(it) } }
+        .build()
 
     private fun connectToRelay(url: String) {
         if (sockets.containsKey(url)) return

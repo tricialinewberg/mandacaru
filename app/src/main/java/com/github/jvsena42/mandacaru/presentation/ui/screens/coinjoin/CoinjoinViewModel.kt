@@ -8,6 +8,8 @@ import com.github.jvsena42.mandacaru.data.FlorestaRpc
 import com.github.jvsena42.mandacaru.data.PreferenceKeys
 import com.github.jvsena42.mandacaru.data.PreferencesDataSource
 import com.github.jvsena42.mandacaru.data.floresta.toFlorestaNetwork
+import com.github.jvsena42.mandacaru.data.network.ProxyReachabilityChecker
+import com.github.jvsena42.mandacaru.data.network.resolveTorProxySettings
 import com.github.jvsena42.mandacaru.domain.bitcoin.TxPrimitives
 import com.github.jvsena42.mandacaru.domain.coinjoin.CoinjoinEngine
 import com.github.jvsena42.mandacaru.domain.coinjoin.PoolContent
@@ -33,6 +35,7 @@ class CoinjoinViewModel(
     private val engine: CoinjoinEngine,
     private val florestaRpc: FlorestaRpc,
     private val preferencesDataSource: PreferencesDataSource,
+    private val proxyReachabilityChecker: ProxyReachabilityChecker,
     /** How long a pool stays open waiting for [MIN_POOL_PEERS] registrations; also announced to peers as [PoolContent.timeoutSeconds]. */
     private val poolTimeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS,
     /** How long each post-registration DM stage (final_outputs, signed_input) waits before the round is declared failed. */
@@ -72,6 +75,7 @@ class CoinjoinViewModel(
         }
         _uiState.update { it.copy(isCreateDialogVisible = false) }
         viewModelScope.launch(Dispatchers.IO) {
+            if (!ensureTorReachableIfEnabled()) return@launch
             val network = currentNetwork()
             val utxo = findEligibleUtxo(denomination) ?: run {
                 showError("No spendable coin of exactly $denomination sats. Prepare one first.")
@@ -104,6 +108,7 @@ class CoinjoinViewModel(
 
     private fun joinPool(pool: PoolContent) {
         viewModelScope.launch(Dispatchers.IO) {
+            if (!ensureTorReachableIfEnabled()) return@launch
             val network = currentNetwork()
             val utxo = findEligibleUtxo(pool.denominationSats) ?: run {
                 showError("No spendable coin of exactly ${pool.denominationSats} sats. Prepare one first.")
@@ -321,6 +326,26 @@ class CoinjoinViewModel(
             PreferenceKeys.CURRENT_NETWORK,
             FlorestaNetwork.BITCOIN.name,
         ).toFlorestaNetwork()
+
+    /**
+     * When the user has opted into Tor, refuses to start a round rather than silently falling
+     * back to clearnet: CoinJoin's whole point is hiding pool registration/coordination traffic,
+     * so a quiet clearnet fallback would deanonymize a user who believes they're protected.
+     */
+    private suspend fun ensureTorReachableIfEnabled(): Boolean {
+        val settings = preferencesDataSource.resolveTorProxySettings()
+        if (!settings.enabled) return true
+        val port = settings.port
+        if (port == null) {
+            showError("Tor is enabled but the configured SOCKS port is invalid. Check Settings.")
+            return false
+        }
+        if (!proxyReachabilityChecker.isReachable(settings.host, port)) {
+            showError("Tor is enabled but unreachable at ${settings.host}:$port. Is Orbot running?")
+            return false
+        }
+        return true
+    }
 
     private fun showError(message: String) {
         Log.w(TAG, message)

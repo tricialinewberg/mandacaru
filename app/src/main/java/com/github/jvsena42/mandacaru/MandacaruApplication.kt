@@ -14,6 +14,8 @@ import com.github.jvsena42.mandacaru.data.floresta.FlorestaDaemonImpl
 import com.github.jvsena42.mandacaru.data.floresta.FlorestaRpcImpl
 import com.github.jvsena42.mandacaru.data.network.NetworkPolicy
 import com.github.jvsena42.mandacaru.data.network.NetworkPolicyManager
+import com.github.jvsena42.mandacaru.data.network.ProxyReachabilityChecker
+import com.github.jvsena42.mandacaru.data.network.SocketProxyReachabilityChecker
 import com.github.jvsena42.mandacaru.data.nostr.NostrClientImpl
 import com.github.jvsena42.mandacaru.data.update.AppUpdateRepositoryImpl
 import com.github.jvsena42.mandacaru.data.wallet.WalletKeyStore
@@ -105,6 +107,7 @@ val presentationModule = module {
             engine = get(),
             florestaRpc = get(),
             preferencesDataSource = get(),
+            proxyReachabilityChecker = get(),
         )
     }
 }
@@ -138,7 +141,8 @@ val dataModule = module {
     single<TransactionDecoder> { BdkTransactionDecoder() }
     single<WalletKeyStore> { WalletKeyStoreImpl(context = androidContext()) }
     single<WalletManager> { WalletManagerImpl(keyStore = get()) }
-    single<NostrClient> { NostrClientImpl() }
+    single<NostrClient> { NostrClientImpl(preferencesDataSource = get()) }
+    single<ProxyReachabilityChecker> { SocketProxyReachabilityChecker() }
     single {
         CoinjoinEngine(
             nostrClient = get(),

@@ -35,4 +35,8 @@ sealed interface SettingsAction {
     data class OnToggleAdvancedFeatures(val enabled: Boolean): SettingsAction
     object ToggleDeveloperToolsExpanded: SettingsAction
     object OnClickViewLogs: SettingsAction
+    object ToggleTorExpanded: SettingsAction
+    data class OnToggleTor(val enabled: Boolean): SettingsAction
+    data class OnTorSocksHostChanged(val host: String): SettingsAction
+    data class OnTorSocksPortChanged(val port: String): SettingsAction
 }

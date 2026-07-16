@@ -48,6 +48,7 @@ import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.VpnLock
 import androidx.compose.material.icons.outlined.Wallet
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -92,6 +93,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
@@ -607,6 +609,98 @@ private fun ScreenSettings(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                                     modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Tor Section
+                item {
+                    SectionCard(
+                        title = stringResource(R.string.tor),
+                        icon = Icons.Outlined.VpnLock,
+                        isExpanded = uiState.isTorExpanded,
+                        onToggle = { onAction(SettingsAction.ToggleTorExpanded) },
+                        modifier = Modifier.animateItem(),
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.tor_enabled),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.tor_enabled_subtitle),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Switch(
+                                    checked = uiState.torEnabled,
+                                    onCheckedChange = { onAction(SettingsAction.OnToggleTor(it)) },
+                                    modifier = Modifier
+                                        .padding(start = 12.dp)
+                                        .testTag("toggle_tor"),
+                                )
+                            }
+
+                            AnimatedVisibility(visible = uiState.torEnabled) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    OutlinedTextField(
+                                        value = uiState.torSocksHost,
+                                        onValueChange = { onAction(SettingsAction.OnTorSocksHostChanged(it)) },
+                                        label = { Text(stringResource(R.string.tor_socks_host)) },
+                                        placeholder = { Text(stringResource(R.string.tor_socks_host_placeholder)) },
+                                        maxLines = 1,
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("input_tor_socks_host"),
+                                    )
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    OutlinedTextField(
+                                        value = uiState.torSocksPort,
+                                        onValueChange = { onAction(SettingsAction.OnTorSocksPortChanged(it)) },
+                                        label = { Text(stringResource(R.string.tor_socks_port)) },
+                                        placeholder = { Text(stringResource(R.string.tor_socks_port_placeholder)) },
+                                        maxLines = 1,
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("input_tor_socks_port"),
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Info,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                                Text(
+                                    stringResource(R.string.tor_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
                             }
                         }

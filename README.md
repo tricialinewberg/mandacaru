@@ -16,7 +16,7 @@ Cardo runs its own lightweight, validating Bitcoin node on your phone (no truste
 - 🩺 **Diagnostics**: Monitor node uptime and memory usage
 - 🎨 **Modern UI**: Material Design 3 interface with light/dark themes, phone and tablet layouts
 
-> **Nostr relay connections are clearnet (TLS WebSocket) for now — Tor is not yet integrated.** This is a deliberate v1 scope decision to ship a working coordinator-less CoinJoin flow first; see [Architecture](#architecture) below.
+> **Nostr relay connections can optionally be routed over Tor** via a local SOCKS proxy (e.g. [Orbot](https://orbot.app/)) - opt-in and off by default, configurable in Settings. When enabled, CoinJoin refuses to start rather than silently falling back to clearnet if the proxy isn't reachable. This covers the Nostr relay traffic only; the local node's own P2P and JSON-RPC connections are unaffected (RPC is loopback-only, and Bitcoin P2P Tor routing is a separate, not-yet-wired gap - Floresta's own `proxy` config field exists but isn't set from the app yet).
 
 ## Screenshots
 
@@ -192,7 +192,7 @@ Built with modern Android development practices:
 - **Coroutines & Flow**: Async operations and reactive streams
 - **DataStore**: Persistent preferences
 - **Koin**: Lightweight dependency injection
-- **OkHttp**: Network communication, including Nostr relay WebSocket connections
+- **OkHttp**: Network communication, including Nostr relay WebSocket connections (optionally proxied over Tor/SOCKS)
 - **JSON-RPC**: Bitcoin Core compatible RPC interface to the local node
 - **BDK (bitcoindevkit)**: BIP39/BIP32 key derivation for the local signing wallet
 - **secp256k1-kmp**: ECDSA (coinjoin input signing) and BIP340 Schnorr (Nostr event signing)
