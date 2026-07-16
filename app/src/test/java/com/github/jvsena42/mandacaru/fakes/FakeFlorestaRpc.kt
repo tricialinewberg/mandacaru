@@ -29,6 +29,7 @@ open class FakeFlorestaRpc : FlorestaRpc {
 
     var blockchainInfoResults: List<Result<GetBlockchainInfoResponse>> = emptyList()
     var transactionResult: Result<GetTransactionResponse>? = null
+    var listUnspentResult: Result<ListUnspentResponse>? = null
     var sendRawTransactionResult: Result<SendRawTransactionResponse> =
         Result.success(SendRawTransactionResponse(id = 1, jsonrpc = "2.0", result = "txid"))
 
@@ -53,7 +54,9 @@ open class FakeFlorestaRpc : FlorestaRpc {
     override fun stop(): Flow<Result<JSONObject>> = emptyFlow()
     override fun getPeerInfo(): Flow<Result<GetPeerInfoResponse>> = emptyFlow()
     override fun listDescriptors(): Flow<Result<ListDescriptorsResponse>> = emptyFlow()
-    override fun listUnspent(minConfirmations: Int): Flow<Result<ListUnspentResponse>> = emptyFlow()
+    override fun listUnspent(minConfirmations: Int): Flow<Result<ListUnspentResponse>> = flow {
+        listUnspentResult?.let { emit(it) }
+    }
     override fun addNode(node: String, command: AddNodeCommand): Flow<Result<AddNodeResponse>> =
         emptyFlow()
 

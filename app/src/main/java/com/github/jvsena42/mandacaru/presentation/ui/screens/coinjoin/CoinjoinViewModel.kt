@@ -13,9 +13,12 @@ import com.github.jvsena42.mandacaru.domain.coinjoin.CoinjoinEngine
 import com.github.jvsena42.mandacaru.domain.coinjoin.PoolContent
 import com.github.jvsena42.mandacaru.domain.coinjoin.RegisteredInput
 import com.github.jvsena42.mandacaru.domain.nostr.NostrCrypto
+import com.github.jvsena42.mandacaru.domain.wallet.CoinjoinOutput
 import com.github.jvsena42.mandacaru.domain.wallet.SignedContribution
 import com.github.jvsena42.mandacaru.domain.wallet.WalletUtxo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -79,9 +82,16 @@ class CoinjoinViewModel(
                 feeRateSatVb = DEFAULT_FEE_RATE,
             ).onSuccess { local ->
                 _uiState.update { it.copy(activePoolId = local.pool.id, activePoolStatus = "Waiting for peers to join…") }
-                val ownRegistration = engine.registerInput(network, local.pool, utxo, prevTxHex).getOrNull()
-                if (ownRegistration != null) {
-                    runRound(network, local.pool, local.ephemeralPrivateKeyHex, isCreator = true)
+                val registration = engine.registerInput(network, local.pool, utxo, prevTxHex).getOrNull()
+                if (registration != null) {
+                    runRound(
+                        network = network,
+                        pool = local.pool,
+                        ownRegistration = registration.registeredInputs.first(),
+                        ownRegistrationPrivateKeyHex = registration.ephemeralPrivateKeyHex,
+                        isCreator = true,
+                        creatorPrivateKeyHex = local.ephemeralPrivateKeyHex,
+                    )
                 }
             }.onFailure { showError(it.message ?: "Failed to create pool") }
         }
@@ -98,39 +108,87 @@ class CoinjoinViewModel(
             engine.registerInput(network, pool, utxo, prevTxHex)
                 .onSuccess { local ->
                     _uiState.update { it.copy(activePoolId = pool.id, activePoolStatus = "Registered - waiting for the round to fill…") }
-                    runRound(network, pool, local.ephemeralPrivateKeyHex, isCreator = false)
+                    runRound(
+                        network = network,
+                        pool = pool,
+                        ownRegistration = local.registeredInputs.first(),
+                        ownRegistrationPrivateKeyHex = local.ephemeralPrivateKeyHex,
+                        isCreator = false,
+                    )
                 }
                 .onFailure { showError(it.message ?: "Failed to join pool") }
         }
     }
 
     /**
-     * Drives this device's side of one round after registration. The creator
-     * additionally waits for every other peer's registration DM, fans out the
-     * final output list, then both roles wait for signed-input DMs to merge.
+     * Drives this device's side of one round after registration.
+     *
+     * The creator waits for every other peer's registration DM, fans out the
+     * agreed final output list, then - like every other peer - signs its own
+     * input and waits for everyone's signed-input DM to merge and broadcast.
+     * Non-creator peers just wait for the creator's final output list, sign
+     * their own input, and send it back; the creator does the merging.
      * Kept intentionally simple (no timeout/retry handling yet) for this
      * first port - see the PR notes.
      */
-    private suspend fun runRound(network: FlorestaNetwork, pool: PoolContent, myPrivateKeyHex: String, isCreator: Boolean) {
-        // Non-creator peers just wait for the creator to reach out with the
-        // final output list, then sign and submit - handled inline below.
-        if (!isCreator) return
+    @Suppress("LongParameterList")
+    private suspend fun runRound(
+        network: FlorestaNetwork,
+        pool: PoolContent,
+        ownRegistration: RegisteredInput,
+        ownRegistrationPrivateKeyHex: String,
+        isCreator: Boolean,
+        creatorPrivateKeyHex: String = ownRegistrationPrivateKeyHex,
+    ) {
+        if (!isCreator) {
+            val outputs = mutableListOf<CoinjoinOutput>()
+            collectDirectMessages(ownRegistrationPrivateKeyHex) { _, payload ->
+                if (payload.optString("type") != "final_outputs") return@collectDirectMessages false
+                outputs.addAll(parseFinalOutputs(payload))
+                true
+            }
+            if (outputs.isEmpty()) {
+                showError("Never received this round's final output list")
+                return
+            }
+            engine.signAndSubmit(
+                network = network,
+                myPrivateKeyHex = ownRegistrationPrivateKeyHex,
+                creatorPublicKeyHex = pool.publicKey,
+                myRegistration = ownRegistration,
+                allOutputs = outputs,
+            ).onSuccess {
+                _uiState.update { it.copy(activePoolStatus = "Signed - waiting for the round to broadcast…") }
+            }.onFailure { showError(it.message ?: "Failed to sign this round's input") }
+            return
+        }
 
         val registrations = mutableListOf<RegisteredInput>()
-        collectDirectMessages(myPrivateKeyHex) { senderPubKeyHex, payload ->
+        collectDirectMessages(creatorPrivateKeyHex) { senderPubKeyHex, payload ->
             if (payload.optString("type") == "register" && registrations.size < pool.peers) {
                 registrations.add(RegisteredInput.fromJson(peerPublicKey = senderPubKeyHex, json = payload))
             }
             registrations.size >= pool.peers
         }
 
-        val outputs = engine.broadcastFinalOutputs(pool, myPrivateKeyHex, registrations).getOrElse {
+        val outputs = engine.broadcastFinalOutputs(pool, creatorPrivateKeyHex, registrations).getOrElse {
             showError(it.message ?: "Failed to finalize round outputs")
             return
         }
 
+        engine.signAndSubmit(
+            network = network,
+            myPrivateKeyHex = ownRegistrationPrivateKeyHex,
+            creatorPublicKeyHex = pool.publicKey,
+            myRegistration = ownRegistration,
+            allOutputs = outputs,
+        ).onFailure {
+            showError(it.message ?: "Failed to sign this round's own input")
+            return
+        }
+
         val contributions = mutableListOf<SignedContribution>()
-        collectDirectMessages(myPrivateKeyHex) { _, payload ->
+        collectDirectMessages(creatorPrivateKeyHex) { _, payload ->
             if (payload.optString("type") == "signed_input" && contributions.size < registrations.size) {
                 contributions.add(
                     SignedContribution(
@@ -150,17 +208,32 @@ class CoinjoinViewModel(
             .onFailure { showError(it.message ?: "Failed to broadcast the joined transaction") }
     }
 
-    /** Collects decrypted DM payloads addressed to this ephemeral key until [onPayload] returns true. */
-    private suspend fun collectDirectMessages(myPrivateKeyHex: String, onPayload: (String, JSONObject) -> Boolean) {
-        val privateKey = TxPrimitives.hexToBytes(myPrivateKeyHex)
-        var done = false
-        engine.directMessages().collect { event ->
-            if (done) return@collect
-            val shared = NostrCrypto.sharedSecret(privateKey, event.pubKey)
-            val payload = runCatching { JSONObject(NostrCrypto.decryptDirectMessage(event.content, shared)) }.getOrNull()
-                ?: return@collect
-            if (onPayload(event.pubKey, payload)) done = true
+    /** Parses the `final_outputs` DM payload's `"scriptPubKeyHex:amount"` entries back into outputs. */
+    private fun parseFinalOutputs(payload: JSONObject): List<CoinjoinOutput> {
+        val array = payload.getJSONArray("outputs")
+        return List(array.length()) { index ->
+            val (scriptPubKeyHex, amount) = array.getString(index).split(":", limit = 2)
+            CoinjoinOutput(scriptPubKeyHex, amount.toLong())
         }
+    }
+
+    /**
+     * Collects decrypted DM payloads addressed to this ephemeral key until [onPayload] returns
+     * true. Runs the underlying flow collection in a child coroutine so it can be cancelled as
+     * soon as [onPayload] is satisfied, rather than collecting from the (never-completing) relay
+     * event stream forever.
+     */
+    private suspend fun collectDirectMessages(myPrivateKeyHex: String, onPayload: (String, JSONObject) -> Boolean) = coroutineScope {
+        val privateKey = TxPrimitives.hexToBytes(myPrivateKeyHex)
+        val job = launch {
+            engine.directMessages().collect { event ->
+                val shared = NostrCrypto.sharedSecret(privateKey, event.pubKey)
+                val payload = runCatching { JSONObject(NostrCrypto.decryptDirectMessage(event.content, shared)) }.getOrNull()
+                    ?: return@collect
+                if (onPayload(event.pubKey, payload)) cancel()
+            }
+        }
+        job.join()
     }
 
     private suspend fun findEligibleUtxo(denominationSats: Long): WalletUtxo? {
