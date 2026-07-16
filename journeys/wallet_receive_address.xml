@@ -1,0 +1,14 @@
+<journey name="Wallet receive address">
+    <description>
+        Generates a receive address on the Wallet screen and verifies it renders with
+        its QR code, without crashing - exercising first-run wallet creation and BIP84
+        address derivation end to end.
+    </description>
+    <actions>
+        <action>Launch the Mandacaru app and wait for the splash screen to dismiss (poll until nav_node is present)</action>
+        <action>Tap the Wallet navigation item (nav_wallet)</action>
+        <action>Verify the balance card (wallet_balance_card) is displayed</action>
+        <action>Tap the "Generate address" button (button_new_address)</action>
+        <action>Verify a receive address (wallet_receive_address) is displayed and starts with "bc1", "tb1", or "bcrt1"</action>
+    </actions>
+</journey>

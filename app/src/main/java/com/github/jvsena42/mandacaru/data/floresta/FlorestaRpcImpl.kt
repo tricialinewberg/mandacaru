@@ -17,6 +17,7 @@ import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetPeerIn
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.SendRawTransactionResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTransactionResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListDescriptorsResponse
+import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListUnspentResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.UptimeResponse
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +70,9 @@ class FlorestaRpcImpl(
 
     override fun listDescriptors(): Flow<Result<ListDescriptorsResponse>> =
         executeRpcCall(RpcMethods.LIST_DESCRIPTORS)
+
+    override fun listUnspent(minConfirmations: Int): Flow<Result<ListUnspentResponse>> =
+        executeRpcCall(RpcMethods.LIST_UNSPENT, params = arrayOf(minConfirmations))
 
     override fun addNode(node: String, command: AddNodeCommand): Flow<Result<AddNodeResponse>> {
         Log.d(TAG, "addNode: $node (${command.value})")

@@ -10,6 +10,7 @@ import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockc
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetPeerInfoResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTransactionResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListDescriptorsResponse
+import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListUnspentResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.SendRawTransactionResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.UptimeResponse
 import kotlinx.coroutines.flow.Flow
@@ -52,6 +53,7 @@ open class FakeFlorestaRpc : FlorestaRpc {
     override fun stop(): Flow<Result<JSONObject>> = emptyFlow()
     override fun getPeerInfo(): Flow<Result<GetPeerInfoResponse>> = emptyFlow()
     override fun listDescriptors(): Flow<Result<ListDescriptorsResponse>> = emptyFlow()
+    override fun listUnspent(minConfirmations: Int): Flow<Result<ListUnspentResponse>> = emptyFlow()
     override fun addNode(node: String, command: AddNodeCommand): Flow<Result<AddNodeResponse>> =
         emptyFlow()
 

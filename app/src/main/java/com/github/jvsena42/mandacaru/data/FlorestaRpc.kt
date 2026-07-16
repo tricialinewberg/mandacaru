@@ -8,6 +8,7 @@ import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockH
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockchainInfoResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetPeerInfoResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListDescriptorsResponse
+import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListUnspentResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.SendRawTransactionResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTransactionResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.UptimeResponse
@@ -74,6 +75,13 @@ interface FlorestaRpc {
     fun getTransaction(txId: String): Flow<Result<GetTransactionResponse>>
 
     fun listDescriptors(): Flow<Result<ListDescriptorsResponse>>
+
+    /**
+     * Lists the unspent outputs tracked by wallet descriptors loaded via [loadDescriptor].
+     * @param minConfirmations The minimum number of confirmations an output must have
+     * @return A `Result` containing `ListUnspentResponse` with the matching UTXOs
+     */
+    fun listUnspent(minConfirmations: Int = 0): Flow<Result<ListUnspentResponse>>
 
     /**
      * Adds a new node to our list of peers. This will make our node try to connect to this peer.

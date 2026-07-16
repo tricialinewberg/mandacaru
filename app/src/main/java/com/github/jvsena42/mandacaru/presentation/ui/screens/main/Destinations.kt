@@ -11,7 +11,7 @@ enum class Destinations(
     @DrawableRes val icon: Int
 ) {
     NODE(route = "Node", label = "Node Info", R.drawable.ic_node),
-    BLOCKCHAIN(route = "Blockchain", label = "Blockchain", R.drawable.ic_blockchain),
-    TRANSACTION(route = "Transaction", label = "Transactions", R.drawable.ic_transaction),
+    WALLET(route = "Wallet", label = "Wallet", R.drawable.ic_wallet),
+    COINJOIN(route = "Coinjoin", label = "CoinJoin", R.drawable.ic_coinjoin),
     SETTINGS(route = "Settings", label = "Settings", R.drawable.ic_settings),
 }
