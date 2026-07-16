@@ -1,5 +1,6 @@
 package com.github.jvsena42.mandacaru.presentation.ui.screens.coinjoin
 
+import com.florestad.Network as FlorestaNetwork
 import com.github.jvsena42.mandacaru.data.PreferenceKeys
 import com.github.jvsena42.mandacaru.data.PreferencesDataSource
 import com.github.jvsena42.mandacaru.domain.coinjoin.CoinjoinEngine
@@ -8,6 +9,7 @@ import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTransa
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListUnspentResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.TransactionResult
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.UnspentItem
+import com.github.jvsena42.mandacaru.domain.wallet.WalletUtxo
 import com.github.jvsena42.mandacaru.fakes.FakeFlorestaRpc
 import com.github.jvsena42.mandacaru.fakes.FakeNostrClient
 import com.github.jvsena42.mandacaru.fakes.FakeNostrRelay
@@ -22,6 +24,7 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -72,6 +75,49 @@ class CoinjoinRoundTest {
         assertEquals("", joinerB.viewModel.uiState.value.errorMessage)
     }
 
+    @Test
+    fun `registration stage times out and fails the round when not enough peers ever join`() = runBlocking {
+        val relay = FakeNostrRelay()
+        // Pool timeout is 1 second - short enough for a quick test, but expressed through the
+        // real per-pool config (PoolContent.timeoutSeconds), same value announced to peers.
+        val creator = TestPeer(relay, DENOMINATION_SATS, txid = "a".repeat(64), poolTimeoutSeconds = 1L)
+
+        creator.viewModel.onAction(CoinjoinAction.OnDenominationChanged(DENOMINATION_SATS.toString()))
+        creator.viewModel.onAction(CoinjoinAction.OnConfirmCreatePool)
+
+        // No joiners ever register - the pool creator should give up instead of hanging forever.
+        awaitRoundFailure(creator.viewModel)
+
+        assertTrue(creator.viewModel.uiState.value.activePoolStatus.contains("timed out", ignoreCase = true))
+        assertTrue(creator.viewModel.uiState.value.errorMessage.contains("timed out", ignoreCase = true))
+        assertNull(creator.viewModel.uiState.value.activePoolId)
+        assertTrue(creator.rpc.sentRawTransactions.isEmpty())
+    }
+
+    @Test
+    fun `round fails when a registered peer goes silent and never signs`() = runBlocking {
+        val relay = FakeNostrRelay()
+        // Short stage timeout so the test doesn't wait on the (1 hour) production default.
+        val creator = TestPeer(relay, DENOMINATION_SATS, txid = "a".repeat(64), roundStageTimeoutMillis = 300L)
+        val joinerA = TestPeer(relay, DENOMINATION_SATS, txid = "b".repeat(64))
+        val silentPeer = SilentPeer(relay, DENOMINATION_SATS, txid = "c".repeat(64))
+
+        creator.viewModel.onAction(CoinjoinAction.OnDenominationChanged(DENOMINATION_SATS.toString()))
+        creator.viewModel.onAction(CoinjoinAction.OnConfirmCreatePool)
+
+        val pool = awaitPool(joinerA.viewModel)
+        joinerA.viewModel.onAction(CoinjoinAction.OnClickJoinPool(pool))
+        // Registers its input (so the pool fills and the round starts) but never listens for
+        // final_outputs or signs - standing in for a peer that drops off the relay mid-round.
+        silentPeer.register(pool)
+
+        awaitRoundFailure(creator.viewModel)
+
+        assertTrue(creator.viewModel.uiState.value.activePoolStatus.contains("timed out", ignoreCase = true))
+        assertNull(creator.viewModel.uiState.value.activePoolId)
+        assertTrue(creator.rpc.sentRawTransactions.isEmpty())
+    }
+
     private suspend fun awaitPool(viewModel: CoinjoinViewModel): PoolContent = withTimeout(TIMEOUT_MS) {
         var pool: PoolContent? = null
         while (pool == null) {
@@ -91,9 +137,78 @@ class CoinjoinRoundTest {
         while (!viewModel.uiState.value.activePoolStatus.startsWith("Broadcast:")) delay(POLL_INTERVAL_MS)
     }
 
+    /** Polls until a round is reported failed (see [CoinjoinViewModel]'s private `failRound`): status text mentions "timed out". */
+    private suspend fun awaitRoundFailure(viewModel: CoinjoinViewModel) = withTimeout(TIMEOUT_MS) {
+        while (!viewModel.uiState.value.activePoolStatus.contains("timed out", ignoreCase = true)) delay(POLL_INTERVAL_MS)
+    }
+
     /** One simulated device: its own wallet/node/engine/viewmodel, sharing only the [relay]. */
-    private class TestPeer(relay: FakeNostrRelay, denominationSats: Long, txid: String) {
-        val rpc = FakeFlorestaRpc().apply {
+    private class TestPeer(
+        relay: FakeNostrRelay,
+        denominationSats: Long,
+        txid: String,
+        poolTimeoutSeconds: Long = DEFAULT_POOL_TIMEOUT_SECONDS,
+        roundStageTimeoutMillis: Long = DEFAULT_ROUND_STAGE_TIMEOUT_MILLIS,
+    ) {
+        val rpc = fakeRpcFor(denominationSats, txid)
+        private val engine = CoinjoinEngine(FakeNostrClient(relay), FakeWalletManager(), rpc)
+        val viewModel = CoinjoinViewModel(
+            engine = engine,
+            florestaRpc = rpc,
+            preferencesDataSource = FakePreferencesDataSource(),
+            poolTimeoutSeconds = poolTimeoutSeconds,
+            roundStageTimeoutMillis = roundStageTimeoutMillis,
+        )
+    }
+
+    /**
+     * A peer that registers an input directly through [CoinjoinEngine] - filling the pool so the
+     * round starts - but never listens for `final_outputs` or signs afterward, standing in for a
+     * peer whose relay connection drops mid-round.
+     */
+    private class SilentPeer(private val relay: FakeNostrRelay, private val denominationSats: Long, private val txid: String) {
+        private val rpc = fakeRpcFor(denominationSats, txid)
+        private val engine = CoinjoinEngine(FakeNostrClient(relay), FakeWalletManager(), rpc)
+
+        suspend fun register(pool: PoolContent) {
+            val prevTxHex = "00".repeat(50)
+            val utxo = WalletUtxo(
+                txid = txid,
+                vout = 0,
+                amountSats = denominationSats,
+                scriptPubKeyHex = "0014" + "11".repeat(20),
+                address = null,
+                confirmations = 6,
+            )
+            engine.registerInput(FlorestaNetwork.BITCOIN, pool, utxo, prevTxHex).getOrThrow()
+        }
+    }
+
+    private class FakePreferencesDataSource : PreferencesDataSource {
+        private val strings = mutableMapOf<PreferenceKeys, String>()
+        private val booleans = mutableMapOf<PreferenceKeys, Boolean>()
+        override suspend fun setString(key: PreferenceKeys, value: String) {
+            strings[key] = value
+        }
+        override suspend fun getString(key: PreferenceKeys, defaultValue: String): String =
+            strings[key] ?: defaultValue
+        override suspend fun setBoolean(key: PreferenceKeys, value: Boolean) {
+            booleans[key] = value
+        }
+        override suspend fun getBoolean(key: PreferenceKeys, defaultValue: Boolean): Boolean =
+            booleans[key] ?: defaultValue
+    }
+
+    private companion object {
+        const val DENOMINATION_SATS = 100_000L
+        const val SATS_PER_BTC = 100_000_000.0
+        const val TIMEOUT_MS = 10_000L
+        const val POLL_INTERVAL_MS = 20L
+        const val SIGNED_STATUS = "Signed - waiting for the round to broadcast…"
+        const val DEFAULT_POOL_TIMEOUT_SECONDS = 3600L
+        const val DEFAULT_ROUND_STAGE_TIMEOUT_MILLIS = 60_000L
+
+        fun fakeRpcFor(denominationSats: Long, txid: String): FakeFlorestaRpc = FakeFlorestaRpc().apply {
             listUnspentResult = Result.success(
                 ListUnspentResponse(
                     id = 1,
@@ -134,31 +249,5 @@ class CoinjoinRoundTest {
                 ),
             )
         }
-
-        private val engine = CoinjoinEngine(FakeNostrClient(relay), FakeWalletManager(), rpc)
-        val viewModel = CoinjoinViewModel(engine, rpc, FakePreferencesDataSource())
-    }
-
-    private class FakePreferencesDataSource : PreferencesDataSource {
-        private val strings = mutableMapOf<PreferenceKeys, String>()
-        private val booleans = mutableMapOf<PreferenceKeys, Boolean>()
-        override suspend fun setString(key: PreferenceKeys, value: String) {
-            strings[key] = value
-        }
-        override suspend fun getString(key: PreferenceKeys, defaultValue: String): String =
-            strings[key] ?: defaultValue
-        override suspend fun setBoolean(key: PreferenceKeys, value: Boolean) {
-            booleans[key] = value
-        }
-        override suspend fun getBoolean(key: PreferenceKeys, defaultValue: Boolean): Boolean =
-            booleans[key] ?: defaultValue
-    }
-
-    private companion object {
-        const val DENOMINATION_SATS = 100_000L
-        const val SATS_PER_BTC = 100_000_000.0
-        const val TIMEOUT_MS = 10_000L
-        const val POLL_INTERVAL_MS = 20L
-        const val SIGNED_STATUS = "Signed - waiting for the round to broadcast…"
     }
 }
