@@ -141,25 +141,7 @@ class CoinjoinViewModel(
         creatorPrivateKeyHex: String = ownRegistrationPrivateKeyHex,
     ) {
         if (!isCreator) {
-            val outputs = mutableListOf<CoinjoinOutput>()
-            collectDirectMessages(ownRegistrationPrivateKeyHex) { _, payload ->
-                if (payload.optString("type") != "final_outputs") return@collectDirectMessages false
-                outputs.addAll(parseFinalOutputs(payload))
-                true
-            }
-            if (outputs.isEmpty()) {
-                showError("Never received this round's final output list")
-                return
-            }
-            engine.signAndSubmit(
-                network = network,
-                myPrivateKeyHex = ownRegistrationPrivateKeyHex,
-                creatorPublicKeyHex = pool.publicKey,
-                myRegistration = ownRegistration,
-                allOutputs = outputs,
-            ).onSuccess {
-                _uiState.update { it.copy(activePoolStatus = "Signed - waiting for the round to broadcast…") }
-            }.onFailure { showError(it.message ?: "Failed to sign this round's input") }
+            signAsNonCreator(network, pool, ownRegistration, ownRegistrationPrivateKeyHex)
             return
         }
 
@@ -187,9 +169,46 @@ class CoinjoinViewModel(
             return
         }
 
+        val contributions = collectSignedContributions(creatorPrivateKeyHex, registrations.size)
+
+        engine.finalizeAndBroadcast(contributions, outputs)
+            .onSuccess { txid -> _uiState.update { it.copy(activePoolStatus = "Broadcast: $txid") } }
+            .onFailure { showError(it.message ?: "Failed to broadcast the joined transaction") }
+    }
+
+    /** Non-creator leg: wait for the creator's final output list, sign this peer's own input, and send it back. */
+    private suspend fun signAsNonCreator(
+        network: FlorestaNetwork,
+        pool: PoolContent,
+        ownRegistration: RegisteredInput,
+        ownRegistrationPrivateKeyHex: String,
+    ) {
+        val outputs = mutableListOf<CoinjoinOutput>()
+        collectDirectMessages(ownRegistrationPrivateKeyHex) { _, payload ->
+            if (payload.optString("type") != "final_outputs") return@collectDirectMessages false
+            outputs.addAll(parseFinalOutputs(payload))
+            true
+        }
+        if (outputs.isEmpty()) {
+            showError("Never received this round's final output list")
+            return
+        }
+        engine.signAndSubmit(
+            network = network,
+            myPrivateKeyHex = ownRegistrationPrivateKeyHex,
+            creatorPublicKeyHex = pool.publicKey,
+            myRegistration = ownRegistration,
+            allOutputs = outputs,
+        ).onSuccess {
+            _uiState.update { it.copy(activePoolStatus = "Signed - waiting for the round to broadcast…") }
+        }.onFailure { showError(it.message ?: "Failed to sign this round's input") }
+    }
+
+    /** Collects [expectedCount] `signed_input` DMs addressed to the creator's identity. */
+    private suspend fun collectSignedContributions(creatorPrivateKeyHex: String, expectedCount: Int): List<SignedContribution> {
         val contributions = mutableListOf<SignedContribution>()
         collectDirectMessages(creatorPrivateKeyHex) { _, payload ->
-            if (payload.optString("type") == "signed_input" && contributions.size < registrations.size) {
+            if (payload.optString("type") == "signed_input" && contributions.size < expectedCount) {
                 contributions.add(
                     SignedContribution(
                         txid = payload.getString("txid"),
@@ -200,12 +219,9 @@ class CoinjoinViewModel(
                     ),
                 )
             }
-            contributions.size >= registrations.size
+            contributions.size >= expectedCount
         }
-
-        engine.finalizeAndBroadcast(contributions, outputs)
-            .onSuccess { txid -> _uiState.update { it.copy(activePoolStatus = "Broadcast: $txid") } }
-            .onFailure { showError(it.message ?: "Failed to broadcast the joined transaction") }
+        return contributions
     }
 
     /** Parses the `final_outputs` DM payload's `"scriptPubKeyHex:amount"` entries back into outputs. */
