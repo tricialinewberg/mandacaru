@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- Placeholder splash background matching the new pink/wine palette, kept separate
+         from ic_launcher_background so the launcher icon itself is untouched until the
+         new logo is ready. -->
+    <color name="splash_background">#4B1528</color>
+
     <style name="Theme.Cardo" parent="android:Theme.Material.Light.NoActionBar" />
 
     <style name="Theme.Cardo.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/Theme.Cardo</item>
     </style>
