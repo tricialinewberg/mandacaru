@@ -13,7 +13,9 @@ import fr.acinq.secp256k1.Secp256k1
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bitcoindevkit.DerivationPath
+import org.bitcoindevkit.Descriptor
 import org.bitcoindevkit.DescriptorSecretKey
+import org.bitcoindevkit.KeychainKind
 import org.bitcoindevkit.Mnemonic
 import org.bitcoindevkit.WordCount
 import org.bitcoindevkit.Network as BdkNetwork
@@ -66,8 +68,8 @@ class WalletManagerImpl(
             runSuspendCatching {
                 val mnemonic = requireMnemonic()
                 val bdkNetwork = network.toBdkNetwork()
-                listOf(EXTERNAL_CHAIN, INTERNAL_CHAIN).map { chain ->
-                    accountXpubDescriptor(mnemonic, network, bdkNetwork, chain)
+                listOf(KeychainKind.EXTERNAL, KeychainKind.INTERNAL).map { keychain ->
+                    accountXpubDescriptor(mnemonic, bdkNetwork, keychain)
                 }
             }
         }
@@ -132,19 +134,15 @@ class WalletManagerImpl(
 
     private fun accountXpubDescriptor(
         mnemonicStr: String,
-        network: FlorestaNetwork,
         bdkNetwork: BdkNetwork,
-        chain: Int,
+        keychain: KeychainKind,
     ): String {
         val mnemonic = Mnemonic.fromString(mnemonicStr)
         val master = DescriptorSecretKey(bdkNetwork, mnemonic, null)
-        val accountPath = "m/84h/${coinType(network)}h/0h/$chain"
-        val account = master.derive(DerivationPath(accountPath))
-        // Only the *public* half goes to the node's loaddescriptor - the app never
-        // hands out private keys, matching the existing manual-descriptor flow in
-        // Settings, which rejects any descriptor containing one.
-        val accountPublic = account.toPublic()
-        return "wpkh($accountPublic)/*"
+        // newBip84's default Display/toString renders the public form only - the app
+        // never hands the node a private descriptor, matching the existing manual-
+        // descriptor flow in Settings, which rejects any descriptor containing one.
+        return Descriptor.newBip84(master, keychain, bdkNetwork).toString()
     }
 
     /** Scans the BIP84 external/internal chains for the key whose P2WPKH script matches. */
