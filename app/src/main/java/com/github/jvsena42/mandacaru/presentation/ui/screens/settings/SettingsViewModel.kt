@@ -63,6 +63,12 @@ class SettingsViewModel(
                 .getBoolean(PreferenceKeys.USE_ALSO_MOBILE_DATA, false)
             val enableAdvancedFeatures = preferencesDataSource
                 .getBoolean(PreferenceKeys.ENABLE_ADVANCED_FEATURES, false)
+            val torEnabled = preferencesDataSource
+                .getBoolean(PreferenceKeys.TOR_ENABLED, false)
+            val torSocksHost = preferencesDataSource
+                .getString(PreferenceKeys.TOR_SOCKS_HOST, "")
+            val torSocksPort = preferencesDataSource
+                .getString(PreferenceKeys.TOR_SOCKS_PORT, "")
             _uiState.update {
                 it.copy(
                     selectedNetwork = preferencesDataSource.getString(
@@ -72,6 +78,9 @@ class SettingsViewModel(
                     walletBirthdayYear = birthdayYear,
                     useAlsoMobileData = useAlsoMobileData,
                     enableAdvancedFeatures = enableAdvancedFeatures,
+                    torEnabled = torEnabled,
+                    torSocksHost = torSocksHost,
+                    torSocksPort = torSocksPort,
                 )
             }
             updateElectrumAddress()
@@ -215,6 +224,30 @@ class SettingsViewModel(
             SettingsAction.OnClickViewLogs -> viewModelScope.sendEvent(
                 SettingsEvents.OpenDeveloperLogs
             )
+
+            SettingsAction.ToggleTorExpanded -> _uiState.update {
+                it.copy(isTorExpanded = !it.isTorExpanded)
+            }
+            is SettingsAction.OnToggleTor -> handleTorToggled(action)
+            is SettingsAction.OnTorSocksHostChanged -> {
+                _uiState.update { it.copy(torSocksHost = action.host) }
+                viewModelScope.launch(Dispatchers.IO) {
+                    preferencesDataSource.setString(PreferenceKeys.TOR_SOCKS_HOST, action.host)
+                }
+            }
+            is SettingsAction.OnTorSocksPortChanged -> {
+                _uiState.update { it.copy(torSocksPort = action.port) }
+                viewModelScope.launch(Dispatchers.IO) {
+                    preferencesDataSource.setString(PreferenceKeys.TOR_SOCKS_PORT, action.port)
+                }
+            }
+        }
+    }
+
+    private fun handleTorToggled(action: SettingsAction.OnToggleTor) {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferencesDataSource.setBoolean(PreferenceKeys.TOR_ENABLED, action.enabled)
+            _uiState.update { it.copy(torEnabled = action.enabled) }
         }
     }
 

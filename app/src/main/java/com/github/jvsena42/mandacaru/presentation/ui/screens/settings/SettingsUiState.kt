@@ -44,4 +44,8 @@ data class SettingsUiState(
     val isDataUsageExpanded: Boolean = false,
     val enableAdvancedFeatures: Boolean = false,
     val isDeveloperToolsExpanded: Boolean = false,
+    val torEnabled: Boolean = false,
+    val torSocksHost: String = "",
+    val torSocksPort: String = "",
+    val isTorExpanded: Boolean = false,
 )

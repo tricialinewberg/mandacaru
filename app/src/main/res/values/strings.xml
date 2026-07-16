@@ -44,6 +44,14 @@
     <string name="also_use_mobile_data_subtitle">When off, the node syncs only over Wi-Fi to avoid using mobile data</string>
     <string name="waiting_for_wifi">Waiting for Wi-Fi</string>
     <string name="waiting_for_wifi_subtitle">Sync paused — connect to Wi-Fi or allow mobile data in Settings</string>
+    <string name="tor">Tor</string>
+    <string name="tor_enabled">Route CoinJoin over Tor</string>
+    <string name="tor_enabled_subtitle">Routes Nostr relay connections through a local SOCKS proxy (e.g. Orbot). CoinJoin is blocked if it isn\'t reachable — no silent clearnet fallback.</string>
+    <string name="tor_socks_host">SOCKS host</string>
+    <string name="tor_socks_host_placeholder">127.0.0.1</string>
+    <string name="tor_socks_port">SOCKS port</string>
+    <string name="tor_socks_port_placeholder">9050</string>
+    <string name="tor_hint">Only the Nostr relay connections used for CoinJoin are routed through Tor — the local node\'s own P2P and RPC traffic are unaffected.</string>
     <string name="validated_blocks">Validated Blocks</string>
     <string name="descriptors">Descriptors</string>
     <string name="no_descriptors_loaded">No descriptors loaded yet</string>

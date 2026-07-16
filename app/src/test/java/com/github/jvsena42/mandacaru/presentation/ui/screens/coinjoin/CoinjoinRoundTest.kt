@@ -3,6 +3,7 @@ package com.github.jvsena42.mandacaru.presentation.ui.screens.coinjoin
 import com.florestad.Network as FlorestaNetwork
 import com.github.jvsena42.mandacaru.data.PreferenceKeys
 import com.github.jvsena42.mandacaru.data.PreferencesDataSource
+import com.github.jvsena42.mandacaru.data.network.ProxyReachabilityChecker
 import com.github.jvsena42.mandacaru.domain.coinjoin.CoinjoinEngine
 import com.github.jvsena42.mandacaru.domain.coinjoin.PoolContent
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTransactionResponse
@@ -118,6 +119,48 @@ class CoinjoinRoundTest {
         assertTrue(creator.rpc.sentRawTransactions.isEmpty())
     }
 
+    @Test
+    fun `CoinJoin is blocked when Tor is enabled but the SOCKS proxy is unreachable`() = runBlocking {
+        val relay = FakeNostrRelay()
+        val prefs = FakePreferencesDataSource(initialBooleans = mapOf(PreferenceKeys.TOR_ENABLED to true))
+        val creator = TestPeer(
+            relay,
+            DENOMINATION_SATS,
+            txid = "a".repeat(64),
+            preferencesDataSource = prefs,
+            proxyReachabilityChecker = FakeProxyReachabilityChecker(reachable = false),
+        )
+
+        creator.viewModel.onAction(CoinjoinAction.OnDenominationChanged(DENOMINATION_SATS.toString()))
+        creator.viewModel.onAction(CoinjoinAction.OnConfirmCreatePool)
+
+        awaitError(creator.viewModel)
+
+        assertTrue(creator.viewModel.uiState.value.errorMessage.contains("Tor", ignoreCase = true))
+        assertNull(creator.viewModel.uiState.value.activePoolId)
+        assertTrue(creator.rpc.sentRawTransactions.isEmpty())
+    }
+
+    @Test
+    fun `CoinJoin proceeds normally when Tor is enabled and the SOCKS proxy is reachable`() = runBlocking {
+        val relay = FakeNostrRelay()
+        val prefs = FakePreferencesDataSource(initialBooleans = mapOf(PreferenceKeys.TOR_ENABLED to true))
+        val creator = TestPeer(
+            relay,
+            DENOMINATION_SATS,
+            txid = "a".repeat(64),
+            preferencesDataSource = prefs,
+            proxyReachabilityChecker = FakeProxyReachabilityChecker(reachable = true),
+        )
+
+        creator.viewModel.onAction(CoinjoinAction.OnDenominationChanged(DENOMINATION_SATS.toString()))
+        creator.viewModel.onAction(CoinjoinAction.OnConfirmCreatePool)
+
+        awaitActivePool(creator.viewModel)
+
+        assertEquals("", creator.viewModel.uiState.value.errorMessage)
+    }
+
     private suspend fun awaitPool(viewModel: CoinjoinViewModel): PoolContent = withTimeout(TIMEOUT_MS) {
         var pool: PoolContent? = null
         while (pool == null) {
@@ -142,6 +185,16 @@ class CoinjoinRoundTest {
         while (!viewModel.uiState.value.activePoolStatus.contains("timed out", ignoreCase = true)) delay(POLL_INTERVAL_MS)
     }
 
+    /** Polls until any error is surfaced (e.g. the Tor-reachability gate rejecting the action). */
+    private suspend fun awaitError(viewModel: CoinjoinViewModel) = withTimeout(TIMEOUT_MS) {
+        while (viewModel.uiState.value.errorMessage.isEmpty()) delay(POLL_INTERVAL_MS)
+    }
+
+    /** Polls until a pool becomes this device's active round. */
+    private suspend fun awaitActivePool(viewModel: CoinjoinViewModel) = withTimeout(TIMEOUT_MS) {
+        while (viewModel.uiState.value.activePoolId == null) delay(POLL_INTERVAL_MS)
+    }
+
     /** One simulated device: its own wallet/node/engine/viewmodel, sharing only the [relay]. */
     private class TestPeer(
         relay: FakeNostrRelay,
@@ -149,13 +202,16 @@ class CoinjoinRoundTest {
         txid: String,
         poolTimeoutSeconds: Long = DEFAULT_POOL_TIMEOUT_SECONDS,
         roundStageTimeoutMillis: Long = DEFAULT_ROUND_STAGE_TIMEOUT_MILLIS,
+        preferencesDataSource: PreferencesDataSource = FakePreferencesDataSource(),
+        proxyReachabilityChecker: ProxyReachabilityChecker = FakeProxyReachabilityChecker(reachable = true),
     ) {
         val rpc = fakeRpcFor(denominationSats, txid)
         private val engine = CoinjoinEngine(FakeNostrClient(relay), FakeWalletManager(), rpc)
         val viewModel = CoinjoinViewModel(
             engine = engine,
             florestaRpc = rpc,
-            preferencesDataSource = FakePreferencesDataSource(),
+            preferencesDataSource = preferencesDataSource,
+            proxyReachabilityChecker = proxyReachabilityChecker,
             poolTimeoutSeconds = poolTimeoutSeconds,
             roundStageTimeoutMillis = roundStageTimeoutMillis,
         )
@@ -184,9 +240,11 @@ class CoinjoinRoundTest {
         }
     }
 
-    private class FakePreferencesDataSource : PreferencesDataSource {
+    private class FakePreferencesDataSource(
+        initialBooleans: Map<PreferenceKeys, Boolean> = emptyMap(),
+    ) : PreferencesDataSource {
         private val strings = mutableMapOf<PreferenceKeys, String>()
-        private val booleans = mutableMapOf<PreferenceKeys, Boolean>()
+        private val booleans = mutableMapOf<PreferenceKeys, Boolean>().apply { putAll(initialBooleans) }
         override suspend fun setString(key: PreferenceKeys, value: String) {
             strings[key] = value
         }
@@ -197,6 +255,11 @@ class CoinjoinRoundTest {
         }
         override suspend fun getBoolean(key: PreferenceKeys, defaultValue: Boolean): Boolean =
             booleans[key] ?: defaultValue
+    }
+
+    /** Fake [ProxyReachabilityChecker] that always reports [reachable], regardless of host/port. */
+    private class FakeProxyReachabilityChecker(private val reachable: Boolean) : ProxyReachabilityChecker {
+        override suspend fun isReachable(host: String, port: Int): Boolean = reachable
     }
 
     private companion object {

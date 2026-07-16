@@ -3,8 +3,8 @@ package com.github.jvsena42.mandacaru.domain.nostr
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Clearnet Nostr relay client (WebSocket over TLS). Tor is intentionally out
- * of scope for now - see the CoinJoin settings section for the relay list.
+ * Nostr relay client (WebSocket over TLS). Routes through a local Tor SOCKS proxy (e.g. Orbot)
+ * when enabled in Settings - see [com.github.jvsena42.mandacaru.data.network.resolveTorProxySettings].
  */
 interface NostrClient {
     /** Every event received from any connected relay, deduplicated by id. */

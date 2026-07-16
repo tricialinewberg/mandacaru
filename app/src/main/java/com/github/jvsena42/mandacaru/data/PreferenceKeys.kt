@@ -14,5 +14,8 @@ enum class PreferenceKeys(val dataStoreKey: Preferences.Key<String>) {
     UPDATE_LATEST_APK_URL(stringPreferencesKey("UPDATE_LATEST_APK_URL")),
     UPDATE_SEEN_VERSION(stringPreferencesKey("UPDATE_SEEN_VERSION")),
     USE_ALSO_MOBILE_DATA(stringPreferencesKey("USE_ALSO_MOBILE_DATA")),
-    ENABLE_ADVANCED_FEATURES(stringPreferencesKey("ENABLE_ADVANCED_FEATURES"))
+    ENABLE_ADVANCED_FEATURES(stringPreferencesKey("ENABLE_ADVANCED_FEATURES")),
+    TOR_ENABLED(stringPreferencesKey("TOR_ENABLED")),
+    TOR_SOCKS_HOST(stringPreferencesKey("TOR_SOCKS_HOST")),
+    TOR_SOCKS_PORT(stringPreferencesKey("TOR_SOCKS_PORT"))
 }
