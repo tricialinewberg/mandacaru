@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
 /** Default public relays; user-editable list lands in Settings. */
@@ -32,6 +33,10 @@ class CoinjoinViewModel(
     private val engine: CoinjoinEngine,
     private val florestaRpc: FlorestaRpc,
     private val preferencesDataSource: PreferencesDataSource,
+    /** How long a pool stays open waiting for [MIN_POOL_PEERS] registrations; also announced to peers as [PoolContent.timeoutSeconds]. */
+    private val poolTimeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS,
+    /** How long each post-registration DM stage (final_outputs, signed_input) waits before the round is declared failed. */
+    private val roundStageTimeoutMillis: Long = DEFAULT_ROUND_STAGE_TIMEOUT_MILLIS,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CoinjoinUiState())
@@ -77,7 +82,7 @@ class CoinjoinViewModel(
             engine.createPool(
                 denominationSats = denomination,
                 peers = MIN_POOL_PEERS,
-                timeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+                timeoutSeconds = poolTimeoutSeconds,
                 relay = DEFAULT_NOSTR_RELAYS.first(),
                 feeRateSatVb = DEFAULT_FEE_RATE,
             ).onSuccess { local ->
@@ -128,8 +133,12 @@ class CoinjoinViewModel(
      * input and waits for everyone's signed-input DM to merge and broadcast.
      * Non-creator peers just wait for the creator's final output list, sign
      * their own input, and send it back; the creator does the merging.
-     * Kept intentionally simple (no timeout/retry handling yet) for this
-     * first port - see the PR notes.
+     *
+     * Each DM-collection stage (registration, final_outputs, signed_input) is
+     * bounded by a timeout so a dropped peer fails the round instead of
+     * hanging forever. There is no in-round retry: a timed-out round is left
+     * failed and reported via [failRound], and the user starts a fresh round
+     * (new ephemeral keys, new registration) rather than resuming a stale one.
      */
     @Suppress("LongParameterList")
     private suspend fun runRound(
@@ -146,11 +155,18 @@ class CoinjoinViewModel(
         }
 
         val registrations = mutableListOf<RegisteredInput>()
-        collectDirectMessages(creatorPrivateKeyHex) { senderPubKeyHex, payload ->
+        val registered = collectDirectMessages(
+            myPrivateKeyHex = creatorPrivateKeyHex,
+            timeoutMillis = pool.timeoutSeconds * MILLIS_PER_SECOND,
+        ) { senderPubKeyHex, payload ->
             if (payload.optString("type") == "register" && registrations.size < pool.peers) {
                 registrations.add(RegisteredInput.fromJson(peerPublicKey = senderPubKeyHex, json = payload))
             }
             registrations.size >= pool.peers
+        }
+        if (!registered) {
+            failRound("Round timed out - not enough peers registered in time")
+            return
         }
 
         val outputs = engine.broadcastFinalOutputs(pool, creatorPrivateKeyHex, registrations).getOrElse {
@@ -169,7 +185,10 @@ class CoinjoinViewModel(
             return
         }
 
-        val contributions = collectSignedContributions(creatorPrivateKeyHex, registrations.size)
+        val contributions = collectSignedContributions(creatorPrivateKeyHex, registrations.size) ?: run {
+            failRound("Round timed out - a peer never sent back its signed input")
+            return
+        }
 
         engine.finalizeAndBroadcast(contributions, outputs)
             .onSuccess { txid -> _uiState.update { it.copy(activePoolStatus = "Broadcast: $txid") } }
@@ -184,13 +203,16 @@ class CoinjoinViewModel(
         ownRegistrationPrivateKeyHex: String,
     ) {
         val outputs = mutableListOf<CoinjoinOutput>()
-        collectDirectMessages(ownRegistrationPrivateKeyHex) { _, payload ->
+        val received = collectDirectMessages(
+            myPrivateKeyHex = ownRegistrationPrivateKeyHex,
+            timeoutMillis = roundStageTimeoutMillis,
+        ) { _, payload ->
             if (payload.optString("type") != "final_outputs") return@collectDirectMessages false
             outputs.addAll(parseFinalOutputs(payload))
             true
         }
-        if (outputs.isEmpty()) {
-            showError("Never received this round's final output list")
+        if (!received) {
+            failRound("Round timed out - never received this round's final output list")
             return
         }
         engine.signAndSubmit(
@@ -204,10 +226,13 @@ class CoinjoinViewModel(
         }.onFailure { showError(it.message ?: "Failed to sign this round's input") }
     }
 
-    /** Collects [expectedCount] `signed_input` DMs addressed to the creator's identity. */
-    private suspend fun collectSignedContributions(creatorPrivateKeyHex: String, expectedCount: Int): List<SignedContribution> {
+    /** Collects [expectedCount] `signed_input` DMs addressed to the creator's identity, or `null` on timeout. */
+    private suspend fun collectSignedContributions(creatorPrivateKeyHex: String, expectedCount: Int): List<SignedContribution>? {
         val contributions = mutableListOf<SignedContribution>()
-        collectDirectMessages(creatorPrivateKeyHex) { _, payload ->
+        val completed = collectDirectMessages(
+            myPrivateKeyHex = creatorPrivateKeyHex,
+            timeoutMillis = roundStageTimeoutMillis,
+        ) { _, payload ->
             if (payload.optString("type") == "signed_input" && contributions.size < expectedCount) {
                 contributions.add(
                     SignedContribution(
@@ -221,7 +246,7 @@ class CoinjoinViewModel(
             }
             contributions.size >= expectedCount
         }
-        return contributions
+        return if (completed) contributions else null
     }
 
     /** Parses the `final_outputs` DM payload's `"scriptPubKeyHex:amount"` entries back into outputs. */
@@ -235,21 +260,32 @@ class CoinjoinViewModel(
 
     /**
      * Collects decrypted DM payloads addressed to this ephemeral key until [onPayload] returns
-     * true. Runs the underlying flow collection in a child coroutine so it can be cancelled as
-     * soon as [onPayload] is satisfied, rather than collecting from the (never-completing) relay
-     * event stream forever.
+     * true, or [timeoutMillis] elapses - returning `false` in that case so a stalled wait (e.g. a
+     * peer that dropped off the relay mid-round) fails instead of hanging forever. Runs the
+     * underlying flow collection in a child coroutine so it can be cancelled as soon as
+     * [onPayload] is satisfied, rather than collecting from the (never-completing) relay event
+     * stream forever.
      */
-    private suspend fun collectDirectMessages(myPrivateKeyHex: String, onPayload: (String, JSONObject) -> Boolean) = coroutineScope {
+    private suspend fun collectDirectMessages(
+        myPrivateKeyHex: String,
+        timeoutMillis: Long,
+        onPayload: (String, JSONObject) -> Boolean,
+    ): Boolean {
         val privateKey = TxPrimitives.hexToBytes(myPrivateKeyHex)
-        val job = launch {
-            engine.directMessages().collect { event ->
-                val shared = NostrCrypto.sharedSecret(privateKey, event.pubKey)
-                val payload = runCatching { JSONObject(NostrCrypto.decryptDirectMessage(event.content, shared)) }.getOrNull()
-                    ?: return@collect
-                if (onPayload(event.pubKey, payload)) cancel()
+        val completed = withTimeoutOrNull(timeoutMillis) {
+            coroutineScope {
+                val job = launch {
+                    engine.directMessages().collect { event ->
+                        val shared = NostrCrypto.sharedSecret(privateKey, event.pubKey)
+                        val payload = runCatching { JSONObject(NostrCrypto.decryptDirectMessage(event.content, shared)) }.getOrNull()
+                            ?: return@collect
+                        if (onPayload(event.pubKey, payload)) cancel()
+                    }
+                }
+                job.join()
             }
         }
-        job.join()
+        return completed != null
     }
 
     private suspend fun findEligibleUtxo(denominationSats: Long): WalletUtxo? {
@@ -291,11 +327,19 @@ class CoinjoinViewModel(
         _uiState.update { it.copy(errorMessage = message, isLoading = false) }
     }
 
+    /** Reports a timed-out round as failed: same snackbar as [showError], plus a persistent status and a cleared active pool so the user can start over. */
+    private fun failRound(message: String) {
+        Log.w(TAG, message)
+        _uiState.update { it.copy(activePoolStatus = message, errorMessage = message, activePoolId = null, isLoading = false) }
+    }
+
     private companion object {
         const val TAG = "CoinjoinViewModel"
         const val SATS_PER_BTC = 100_000_000.0
         const val MIN_POOL_PEERS = 3
         const val DEFAULT_TIMEOUT_SECONDS = 3600L
         const val DEFAULT_FEE_RATE = 1.0
+        const val MILLIS_PER_SECOND = 1000L
+        const val DEFAULT_ROUND_STAGE_TIMEOUT_MILLIS = 60_000L
     }
 }
