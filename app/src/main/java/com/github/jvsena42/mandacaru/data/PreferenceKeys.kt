@@ -17,5 +17,6 @@ enum class PreferenceKeys(val dataStoreKey: Preferences.Key<String>) {
     ENABLE_ADVANCED_FEATURES(stringPreferencesKey("ENABLE_ADVANCED_FEATURES")),
     TOR_ENABLED(stringPreferencesKey("TOR_ENABLED")),
     TOR_SOCKS_HOST(stringPreferencesKey("TOR_SOCKS_HOST")),
-    TOR_SOCKS_PORT(stringPreferencesKey("TOR_SOCKS_PORT"))
+    TOR_SOCKS_PORT(stringPreferencesKey("TOR_SOCKS_PORT")),
+    NOSTR_RELAYS(stringPreferencesKey("NOSTR_RELAYS"))
 }

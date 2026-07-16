@@ -148,6 +148,10 @@ completed round.
 | `toggle_tor`                | "Route CoinJoin over Tor" switch (inside the Tor section) |
 | `input_tor_socks_host`      | Tor SOCKS proxy host field — only rendered while `toggle_tor` is on |
 | `input_tor_socks_port`      | Tor SOCKS proxy port field — only rendered while `toggle_tor` is on |
+| `relay_item_<url>`          | a configured relay row inside the "Nostr relays" section, tag suffixed with its URL |
+| `button_remove_relay_<url>` | that row's remove button — disabled (and dimmed) when it's the last remaining relay |
+| `input_nostr_relay`         | new-relay URL field (must be `wss://…` to be accepted) |
+| `button_add_relay`          | "Add relay" — disabled once the list reaches the configured max |
 
 `button_copy_descriptor` is applied to each loaded descriptor row, so the tag repeats once
 per descriptor — target the first when more than one is present. Tapping a row copies the
@@ -171,6 +175,13 @@ section by text before asserting on it. When on, CoinJoin's create/join actions
 probe the configured host:port before proceeding and block with a snackbar if nothing
 is listening there — so a journey that turns this on without a running proxy should
 expect CoinJoin actions to fail, not hang.
+
+The "Nostr relays" section ships pre-populated with the three default relays (no empty
+state), since at least one relay is always required. `button_remove_relay_<url>` is
+disabled on the last remaining row — removing down to zero is not possible from the UI.
+`button_add_relay` validates the `input_nostr_relay` field client-side (`wss://` scheme,
+no duplicates, capped list size) before persisting; a rejected entry surfaces its reason
+as the text field's error/supporting text, not a snackbar.
 
 `toggle_advanced_features` is off by default. The **Developer Tools** section (and its
 `button_view_logs` / `button_export_logs`) only renders once the toggle is on. Expand

@@ -48,4 +48,8 @@ data class SettingsUiState(
     val torSocksHost: String = "",
     val torSocksPort: String = "",
     val isTorExpanded: Boolean = false,
+    val nostrRelays: List<String> = emptyList(),
+    val nostrRelayInput: String = "",
+    val nostrRelayError: Int? = null,
+    val isNostrRelaysExpanded: Boolean = false,
 )
