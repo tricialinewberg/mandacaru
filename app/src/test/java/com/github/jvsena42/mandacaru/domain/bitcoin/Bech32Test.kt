@@ -8,7 +8,7 @@ class Bech32Test {
 
     @Test
     fun `encodes known BIP173 P2WPKH mainnet vector`() {
-        val programHex = "751e76e8199196d454941c45d1b3a323f1433bd"
+        val programHex = "751e76e8199196d454941c45d1b3a323f1433bd6"
         val expected = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
 
         val address = SegwitAddress.p2wpkh("bc", TxPrimitives.hexToBytes(programHex))
@@ -18,7 +18,7 @@ class Bech32Test {
 
     @Test
     fun `decodes back to the same hrp and data as encoded`() {
-        val programHex = "751e76e8199196d454941c45d1b3a323f1433bd"
+        val programHex = "751e76e8199196d454941c45d1b3a323f1433bd6"
         val address = SegwitAddress.p2wpkh("bc", TxPrimitives.hexToBytes(programHex))
 
         val decoded = Bech32.decode(address)
