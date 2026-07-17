@@ -83,6 +83,43 @@ data class RegisteredInput(
     }
 }
 
+/**
+ * The minimal, on-chain-checkable claim about a registered input - the shape every peer
+ * independently verifies against its own node before signing (see
+ * [com.github.jvsena42.mandacaru.domain.coinjoin.CoinjoinEngine.validateRegisteredInput]).
+ * Deliberately narrower than [RegisteredInput]: it omits [RegisteredInput.prevTxHex] and the
+ * output fields, which aren't part of what a node's UTXO set can confirm.
+ */
+data class RegisteredInputClaim(
+    val txid: String,
+    val vout: Int,
+    val scriptPubKeyHex: String,
+    val amountSats: Long,
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("txid", txid)
+        put("vout", vout)
+        put("script_pub_key", scriptPubKeyHex)
+        put("amount", amountSats)
+    }
+
+    companion object {
+        fun of(registration: RegisteredInput): RegisteredInputClaim = RegisteredInputClaim(
+            txid = registration.utxo.txid,
+            vout = registration.utxo.vout,
+            scriptPubKeyHex = registration.utxo.scriptPubKeyHex,
+            amountSats = registration.utxo.amountSats,
+        )
+
+        fun fromJson(json: JSONObject): RegisteredInputClaim = RegisteredInputClaim(
+            txid = json.getString("txid"),
+            vout = json.getInt("vout"),
+            scriptPubKeyHex = json.getString("script_pub_key"),
+            amountSats = json.getLong("amount"),
+        )
+    }
+}
+
 /** A completed mix, kept locally for the CoinJoin history list. */
 data class CoinJoinHistory(
     val relay: String,

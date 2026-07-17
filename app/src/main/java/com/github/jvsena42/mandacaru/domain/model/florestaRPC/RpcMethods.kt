@@ -10,6 +10,7 @@ enum class RpcMethods(val method: String) {
     ADD_NODE("addnode"),
     LIST_DESCRIPTORS("listdescriptors"),
     LIST_UNSPENT("listunspent"),
+    GET_TX_OUT("gettxout"),
     UPTIME("uptime"),
     GET_BLOCK_HASH("getblockhash"),
     GET_BLOCK_HEADER("getblockheader"),

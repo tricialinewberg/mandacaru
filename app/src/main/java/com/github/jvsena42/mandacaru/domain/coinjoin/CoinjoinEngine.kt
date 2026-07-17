@@ -5,6 +5,7 @@ import com.github.jvsena42.mandacaru.common.runSuspendCatching
 import com.github.jvsena42.mandacaru.data.FlorestaRpc
 import com.github.jvsena42.mandacaru.domain.bitcoin.SegwitAddress
 import com.github.jvsena42.mandacaru.domain.bitcoin.TxPrimitives
+import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.TxOutResult
 import com.github.jvsena42.mandacaru.domain.nostr.NostrClient
 import com.github.jvsena42.mandacaru.domain.nostr.NostrCrypto
 import com.github.jvsena42.mandacaru.domain.nostr.NostrEvent
@@ -140,11 +141,60 @@ class CoinjoinEngine(
             put("type", "final_outputs")
             put("pool_id", pool.id)
             put("outputs", org.json.JSONArray(outputs.map { it.scriptPubKeyHex + ":" + it.amountSats }))
+            // Every peer - not just this creator - independently validates every registered
+            // input against its own node before signing, so the full claim set (not just the
+            // agreed outputs) has to be fanned out too. This is not a new privacy leak: the
+            // complete input/output set becomes public the moment the final transaction
+            // broadcasts anyway.
+            put("inputs", org.json.JSONArray(registrations.map { RegisteredInputClaim.of(it).toJson() }))
         }
         registrations.forEach { registration ->
             sendEncryptedDm(privateKey, toPubKeyHex = registration.peerPublicKey, payload = payload)
         }
         outputs
+    }
+
+    /**
+     * Confirms [claim] against this device's own node rather than trusting a peer's self-reported
+     * registration: the outpoint must exist, be unspent and confirmed on-chain (not just sitting in
+     * mempool), and its actual amount/scriptPubKey must match what was claimed. Every peer runs
+     * this for every registered input before agreeing to sign - not just the pool creator - so a
+     * malicious registrant (or a dishonest/compromised creator relaying a doctored claim) can't
+     * sneak a fabricated UTXO into a round undetected.
+     *
+     * This deliberately does not attempt to prove the registrant *controls* the UTXO - that's
+     * already enforced downstream, since each peer signs only its own input and
+     * `WalletManagerImpl.findSigningKeyForScript` fails closed if a peer can't derive a key for
+     * the scriptPubKey it claims.
+     */
+    suspend fun validateRegisteredInput(claim: RegisteredInputClaim): Result<Unit> = runSuspendCatching {
+        val scriptBytes = TxPrimitives.hexToBytes(claim.scriptPubKeyHex)
+        require(
+            scriptBytes.size == P2WPKH_SCRIPT_SIZE_BYTES &&
+                scriptBytes[0] == P2WPKH_OP_0 &&
+                scriptBytes[1] == P2WPKH_PUSH_20,
+        ) { "Declared scriptPubKey for ${claim.txid}:${claim.vout} is not a P2WPKH script" }
+
+        var txOut: TxOutResult? = null
+        var rpcFailure: Throwable? = null
+        florestaRpc.getTxOut(claim.txid, claim.vout, includeMempool = false).collect { result ->
+            result.onSuccess { txOut = it.result }.onFailure { rpcFailure = it }
+        }
+        rpcFailure?.let { throw it }
+        val actual = txOut ?: error("UTXO ${claim.txid}:${claim.vout} is spent or does not exist")
+
+        require((actual.confirmations ?: 0) >= MIN_CONFIRMATIONS) {
+            "UTXO ${claim.txid}:${claim.vout} is not confirmed on-chain"
+        }
+        val actualAmountSats = ((actual.value ?: 0.0) * SATS_PER_BTC).toLong()
+        require(actualAmountSats == claim.amountSats) {
+            "Declared amount (${claim.amountSats} sats) for ${claim.txid}:${claim.vout} " +
+                "doesn't match its actual amount ($actualAmountSats sats)"
+        }
+        val actualScriptPubKeyHex = actual.scriptPubKey?.hex.orEmpty()
+        require(actualScriptPubKeyHex.equals(claim.scriptPubKeyHex, ignoreCase = true)) {
+            "Declared scriptPubKey for ${claim.txid}:${claim.vout} doesn't match its actual scriptPubKey"
+        }
     }
 
     /** Called by each peer (including the creator, for its own input) once the final output list is known. */
@@ -226,5 +276,10 @@ class CoinjoinEngine(
         const val POOL_ID_LENGTH = 16
         const val POOL_HISTORY_LIMIT = 50
         const val MILLIS_PER_SECOND = 1000L
+        const val SATS_PER_BTC = 100_000_000.0
+        const val MIN_CONFIRMATIONS = 1
+        const val P2WPKH_SCRIPT_SIZE_BYTES = 22
+        const val P2WPKH_OP_0: Byte = 0x00
+        const val P2WPKH_PUSH_20: Byte = 0x14
     }
 }

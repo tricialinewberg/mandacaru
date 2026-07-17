@@ -14,6 +14,7 @@ import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockH
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockHeaderResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockchainInfoResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetPeerInfoResponse
+import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTxOutResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.SendRawTransactionResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTransactionResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListDescriptorsResponse
@@ -73,6 +74,9 @@ class FlorestaRpcImpl(
 
     override fun listUnspent(minConfirmations: Int): Flow<Result<ListUnspentResponse>> =
         executeRpcCall(RpcMethods.LIST_UNSPENT, params = arrayOf(minConfirmations))
+
+    override fun getTxOut(txid: String, vout: Int, includeMempool: Boolean): Flow<Result<GetTxOutResponse>> =
+        executeRpcCall(RpcMethods.GET_TX_OUT, txid, vout, includeMempool)
 
     override fun addNode(node: String, command: AddNodeCommand): Flow<Result<AddNodeResponse>> {
         Log.d(TAG, "addNode: $node (${command.value})")
