@@ -115,7 +115,7 @@ If you want zero trust assumptions, a from-genesis IBD (initial block download) 
 - Internet connection
 
 ### Releases
-Download the latest APK from [GitHub Releases](https://github.com/tricialinewberg/mandacaru/releases).
+Download the latest APK from [GitHub Releases](https://github.com/tricialinewberg/IPE/releases).
 
 > ℹ️ The APK ships native libraries for **`arm64-v8a`** (physical devices) and **`x86_64`** (emulators/CI). 32-bit ABIs (`x86`, `armeabi-v7a`) are not supported.
 
@@ -125,16 +125,16 @@ Download the latest APK from [GitHub Releases](https://github.com/tricialinewber
 **One tap:** with Obtainium installed, open this link on your device to pre-fill the app:
 
 ```
-obtainium://app/{"id":"com.github.jvsena42.mandacaru","url":"https://github.com/tricialinewberg/mandacaru","author":"tricialinewberg","name":"Cardo"}
+obtainium://app/{"id":"com.github.jvsena42.mandacaru","url":"https://github.com/tricialinewberg/IPE","author":"tricialinewberg","name":"Cardo"}
 ```
 
-**Manual:** in Obtainium, tap **Add App**, paste `https://github.com/tricialinewberg/mandacaru` into the *App Source URL* field, then tap **Add**.
+**Manual:** in Obtainium, tap **Add App**, paste `https://github.com/tricialinewberg/IPE` into the *App Source URL* field, then tap **Add**.
 
 ### From Source
 1. Clone the repository:
 ```bash
-git clone https://github.com/tricialinewberg/mandacaru.git
-cd mandacaru
+git clone https://github.com/tricialinewberg/IPE.git
+cd IPE
 ```
 
 2. Build the project:
