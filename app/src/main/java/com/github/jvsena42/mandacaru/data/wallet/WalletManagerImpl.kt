@@ -11,6 +11,8 @@ import com.github.jvsena42.mandacaru.domain.wallet.WalletManager
 import com.github.jvsena42.mandacaru.domain.wallet.WalletUtxo
 import fr.acinq.secp256k1.Secp256k1
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.bitcoindevkit.DerivationPath
 import org.bitcoindevkit.Descriptor
@@ -31,6 +33,11 @@ import org.bitcoindevkit.Network as BdkNetwork
 class WalletManagerImpl(
     private val keyStore: WalletKeyStore,
 ) : WalletManager {
+
+    // Guards the getNextExternalIndex -> setNextExternalIndex read-increment-write in
+    // getNewReceiveAddress: EncryptedSharedPreferences has no atomic increment, so without this,
+    // concurrent calls can read the same index and hand out (and persist) a duplicate address.
+    private val nextExternalIndexMutex = Mutex()
 
     override suspend fun hasWallet(): Boolean = withContext(Dispatchers.Default) {
         keyStore.hasMnemonic()
@@ -78,9 +85,12 @@ class WalletManagerImpl(
         withContext(Dispatchers.Default) {
             runSuspendCatching {
                 val mnemonic = requireMnemonic()
-                val index = keyStore.getNextExternalIndex()
-                val (_, pubKeyHash) = deriveKeyPair(mnemonic, network, EXTERNAL_CHAIN, index)
-                keyStore.setNextExternalIndex(index + 1)
+                val pubKeyHash = nextExternalIndexMutex.withLock {
+                    val index = keyStore.getNextExternalIndex()
+                    val (_, pubKeyHash) = deriveKeyPair(mnemonic, network, EXTERNAL_CHAIN, index)
+                    keyStore.setNextExternalIndex(index + 1)
+                    pubKeyHash
+                }
                 SegwitAddress.p2wpkh(hrpFor(network), pubKeyHash)
             }
         }

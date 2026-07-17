@@ -7,6 +7,10 @@ import com.github.jvsena42.mandacaru.domain.wallet.CoinjoinOutput
 import com.github.jvsena42.mandacaru.domain.wallet.WalletUtxo
 import com.github.jvsena42.mandacaru.fakes.FakeWalletKeyStore
 import fr.acinq.secp256k1.Secp256k1
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -134,6 +138,25 @@ class WalletManagerImplTest {
         val address = manager.getNewReceiveAddress(Network.TESTNET).getOrThrow()
 
         assertEquals("tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl", address)
+    }
+
+    @Test
+    fun `concurrent getNewReceiveAddress calls never hand out a duplicate address`() = runBlocking {
+        val manager = newManager()
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
+        val concurrentCalls = 50
+
+        // Fires every call at once on a multi-threaded dispatcher, racing them against the shared
+        // next-index read-increment-write - without a lock around that sequence, two coroutines can
+        // read the same index and both derive/return the same address (reused, non-atomic gap-free
+        // counter). With the fix, the mutex serializes the sequence so every index is claimed once.
+        val addresses = coroutineScope {
+            (1..concurrentCalls)
+                .map { async(Dispatchers.Default) { manager.getNewReceiveAddress(Network.BITCOIN).getOrThrow() } }
+                .awaitAll()
+        }
+
+        assertEquals(concurrentCalls, addresses.toSet().size)
     }
 
     @Test
