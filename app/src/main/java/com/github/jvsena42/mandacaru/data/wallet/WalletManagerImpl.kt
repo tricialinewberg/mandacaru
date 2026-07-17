@@ -91,10 +91,10 @@ class WalletManagerImpl(
     override suspend fun getNewReceiveAddress(network: FlorestaNetwork): Result<String> =
         withContext(Dispatchers.Default) {
             runSuspendCatching {
-                val mnemonic = requireMnemonic()
+                val master = deriveMasterKey(requireMnemonic(), network)
                 val pubKeyHash = addressIndexMutex.withLock {
                     val index = keyStore.getNextExternalIndex()
-                    val (_, pubKeyHash) = deriveKeyPair(mnemonic, network, EXTERNAL_CHAIN, index)
+                    val (_, pubKeyHash) = deriveKeyPair(master, network, EXTERNAL_CHAIN, index)
                     keyStore.setNextExternalIndex(index + 1)
                     pubKeyHash
                 }
@@ -105,11 +105,11 @@ class WalletManagerImpl(
     override suspend fun recoverNextAddressIndices(network: FlorestaNetwork): Result<RecoveredAddressIndices> =
         withContext(Dispatchers.Default) {
             runSuspendCatching {
-                val mnemonic = requireMnemonic()
+                val master = deriveMasterKey(requireMnemonic(), network)
                 val usedScriptPubKeys = fetchUsedScriptPubKeys()
                 addressIndexMutex.withLock {
-                    val nextExternal = scanNextUnusedIndex(mnemonic, network, EXTERNAL_CHAIN, usedScriptPubKeys)
-                    val nextInternal = scanNextUnusedIndex(mnemonic, network, INTERNAL_CHAIN, usedScriptPubKeys)
+                    val nextExternal = scanNextUnusedIndex(master, network, EXTERNAL_CHAIN, usedScriptPubKeys)
+                    val nextInternal = scanNextUnusedIndex(master, network, INTERNAL_CHAIN, usedScriptPubKeys)
                     keyStore.setNextExternalIndex(nextExternal)
                     keyStore.setNextInternalIndex(nextInternal)
                     RecoveredAddressIndices(nextExternalIndex = nextExternal, nextInternalIndex = nextInternal)
@@ -202,7 +202,7 @@ class WalletManagerImpl(
      * found (0 if none).
      */
     private fun scanNextUnusedIndex(
-        mnemonic: String,
+        master: DescriptorSecretKey,
         network: FlorestaNetwork,
         chain: Int,
         usedScriptPubKeys: Set<String>,
@@ -211,7 +211,7 @@ class WalletManagerImpl(
         var consecutiveUnused = 0
         var index = 0
         while (consecutiveUnused < RECOVERY_GAP_LIMIT) {
-            val (_, pubKeyHash) = deriveKeyPair(mnemonic, network, chain, index)
+            val (_, pubKeyHash) = deriveKeyPair(master, network, chain, index)
             val scriptPubKeyHex = TxPrimitives.bytesToHex(TxPrimitives.p2wpkhScriptPubKey(pubKeyHash))
             if (scriptPubKeyHex in usedScriptPubKeys) {
                 lastUsedIndex = index
@@ -231,9 +231,13 @@ class WalletManagerImpl(
         scriptPubKeyHex: String,
     ): Pair<ByteArray, ByteArray>? {
         val targetScript = TxPrimitives.hexToBytes(scriptPubKeyHex)
+        // Derived once - up to GAP_LIMIT * 2 (1000) indices are checked below, and re-parsing the
+        // mnemonic/rebuilding the BIP32 master (BIP39 seed derivation, PBKDF2-HMAC-SHA512) per
+        // index was the dominant cost, not the cheap incremental child-key derivation itself.
+        val master = deriveMasterKey(mnemonic, network)
         for (chain in listOf(EXTERNAL_CHAIN, INTERNAL_CHAIN)) {
             for (index in 0 until GAP_LIMIT) {
-                val (privateKey, pubKeyHash) = deriveKeyPair(mnemonic, network, chain, index)
+                val (privateKey, pubKeyHash) = deriveKeyPair(master, network, chain, index)
                 val candidateScript = TxPrimitives.p2wpkhScriptPubKey(pubKeyHash)
                 if (candidateScript.contentEquals(targetScript)) return privateKey to pubKeyHash
             }
@@ -241,14 +245,17 @@ class WalletManagerImpl(
         return null
     }
 
+    private fun deriveMasterKey(mnemonicStr: String, network: FlorestaNetwork): DescriptorSecretKey {
+        val mnemonic = Mnemonic.fromString(mnemonicStr)
+        return DescriptorSecretKey(network.toBdkNetwork(), mnemonic, null)
+    }
+
     private fun deriveKeyPair(
-        mnemonicStr: String,
+        master: DescriptorSecretKey,
         network: FlorestaNetwork,
         chain: Int,
         index: Int,
     ): Pair<ByteArray, ByteArray> {
-        val mnemonic = Mnemonic.fromString(mnemonicStr)
-        val master = DescriptorSecretKey(network.toBdkNetwork(), mnemonic, null)
         val path = "m/84h/${coinType(network)}h/0h/$chain/$index"
         val leaf = master.derive(DerivationPath(path))
         val privateKey = leaf.secretBytes()

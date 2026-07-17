@@ -226,8 +226,8 @@ class WalletManagerImplTest {
         )
     }
 
-    /** Independently re-derives the BIP84 change-chain (chain=1) P2WPKH scriptPubKey for [index]. */
-    private fun deriveInternalScriptPubKeyHex(index: Int): String {
+    /** Independently re-derives the BIP84 change-chain (chain=1) private key/pubKeyHash for [index]. */
+    private fun deriveInternalKeyPair(index: Int): Pair<ByteArray, ByteArray> {
         val mnemonic = Mnemonic.fromString(TEST_MNEMONIC)
         val master = DescriptorSecretKey(BdkNetwork.BITCOIN, mnemonic, null)
         val leaf = master.derive(DerivationPath("m/84h/0h/0h/1/$index"))
@@ -235,8 +235,11 @@ class WalletManagerImplTest {
         val uncompressed = Secp256k1.pubkeyCreate(privateKey)
         val compressed = Secp256k1.pubKeyCompress(uncompressed)
         val pubKeyHash = BitcoinHash.hash160(compressed)
-        return TxPrimitives.bytesToHex(TxPrimitives.p2wpkhScriptPubKey(pubKeyHash))
+        return privateKey to pubKeyHash
     }
+
+    private fun deriveInternalScriptPubKeyHex(index: Int): String =
+        TxPrimitives.bytesToHex(TxPrimitives.p2wpkhScriptPubKey(deriveInternalKeyPair(index).second))
 
     @Test
     fun `signCoinjoinContribution fails when the wallet does not control the input's scriptPubKey`() = runBlocking {
@@ -343,6 +346,54 @@ class WalletManagerImplTest {
         // assert the DER SEQUENCE tag explicitly (a compact r||s signature never starts with 0x30).
         assertEquals(0x30, sigDerOnly[0].toInt() and 0xff)
         assertTrue(Secp256k1.verify(sigDerOnly, expectedSighash, pubKey))
+    }
+
+    @Test
+    fun `signCoinjoinContribution finds the correct key after scanning past the external chain's gap limit`() = runBlocking {
+        val manager = newManager()
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
+        // No external-chain address matches, so findSigningKeyForScript must exhaust all 500
+        // external-chain checks - reusing the same cached master key for every one of them, per the
+        // master-key-reuse optimization - before it even starts the internal chain and finds this
+        // match at index 0. A regression in that reuse (e.g. shared derivation state corrupting
+        // later results) would surface here as a wrong key or a failed lookup, not just on the very
+        // first candidate the way the other signCoinjoinContribution tests above exercise it.
+        val (expectedPrivateKey, pubKeyHash) = deriveInternalKeyPair(0)
+        val utxo = WalletUtxo(
+            txid = "cc".repeat(32),
+            vout = 0,
+            amountSats = 150_000L,
+            scriptPubKeyHex = TxPrimitives.bytesToHex(TxPrimitives.p2wpkhScriptPubKey(pubKeyHash)),
+            address = null,
+            confirmations = 6,
+        )
+        val outputs = listOf(CoinjoinOutput("0014" + "77".repeat(20), 149_000L))
+
+        val contribution = manager.signCoinjoinContribution(
+            network = Network.BITCOIN,
+            input = utxo,
+            inputPrevTxHex = "00",
+            allOutputs = outputs,
+        ).getOrThrow()
+
+        val expectedPubKeyHex = TxPrimitives.bytesToHex(
+            Secp256k1.pubKeyCompress(Secp256k1.pubkeyCreate(expectedPrivateKey)),
+        )
+        assertEquals(expectedPubKeyHex, contribution.witnessPubKeyHex)
+
+        val expectedSighash = TxPrimitives.sighashAllAnyoneCanPay(
+            input = TxPrimitives.SighashInput(
+                outpointTxidBE = TxPrimitives.hexToBytes(utxo.txid),
+                vout = utxo.vout,
+                pubKeyHash = pubKeyHash,
+                amountSats = utxo.amountSats,
+                sequence = contribution.sequence,
+            ),
+            outputs = outputs.map { TxPrimitives.hexToBytes(it.scriptPubKeyHex) to it.amountSats },
+            lockTime = 0,
+        )
+        val sigDerOnly = TxPrimitives.hexToBytes(contribution.witnessSignatureHex).dropLast(1).toByteArray()
+        assertTrue(Secp256k1.verify(sigDerOnly, expectedSighash, TxPrimitives.hexToBytes(contribution.witnessPubKeyHex)))
     }
 
     private companion object {
