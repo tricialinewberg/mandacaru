@@ -150,6 +150,10 @@ dependencies {
     // can't load Android's Bionic-linked .so. Pull the desktop-native artifact for tests only, so
     // NostrCrypto (BIP340/ECDH, used throughout the CoinJoin round) actually works under `test`.
     testImplementation(libs.secp256k1.kmp.jni.jvm)
+    // Same reasoning as secp256k1-kmp-jni-jvm above: bdk-android's native lib is Android-only,
+    // so WalletManagerImplTest pulls the desktop-native bdk-jvm build (same BDK version/API) to
+    // exercise real BIP39/BIP84 derivation under `test` instead of a keystore-only fake.
+    testImplementation(libs.bdk.jvm)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -157,4 +161,40 @@ dependencies {
     androidTestImplementation(libs.kotlinx.coroutines.test)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+// Unlike secp256k1-kmp (a true Kotlin Multiplatform project whose native-only jni-android/jni-jvm
+// artifacts carry no Kotlin classes, only the .so), BDK's UniFFI-generated bindings bundle the
+// full org.bitcoindevkit.* Kotlin wrapper *and* the native lib together in each of bdk-android and
+// bdk-jvm. Both end up on the unit test runtime classpath (bdk-android via `implementation`,
+// bdk-jvm via `testImplementation`) with the same class names, so whichever the JVM happens to
+// load first wins - excluding bdk-android from the unit test configurations guarantees it's
+// bdk-jvm's desktop-native classes that get used when running under `test`.
+//
+// AGP does NOT name the resolved unit-test classpaths with a "test" prefix - they're named after
+// the build type, e.g. "debugUnitTestRuntimeClasspath"/"debugUnitTestCompileClasspath". Matching
+// only `name.startsWith("test")` (as an earlier version of this block did) only reaches
+// source-set-level configurations like `testImplementation`, never the classpath Gradle actually
+// resolves to run `testDebugUnitTest` - so bdk-android was never really excluded from it. Match on
+// "UnitTest" (AGP's actual naming) as well so the exclude reaches the classpath that matters, while
+// leaving the real app's "debugRuntimeClasspath"/"debugCompileClasspath" (which need bdk-android)
+// untouched.
+configurations.matching {
+    it.name.startsWith("test", ignoreCase = true) || it.name.contains("UnitTest")
+}.configureEach {
+    exclude(group = "org.bitcoindevkit", module = "bdk-android")
+}
+
+// Gradle's default test console output is a bare "ExceptionType at File:Line" per failure -
+// nowhere near enough to diagnose a native-binding failure. Print the full stack trace/cause
+// chain for failed tests so CI logs are actually actionable without downloading the HTML/XML
+// report artifact.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showStackTraces = true
+        showExceptions = true
+        events("failed")
+    }
 }

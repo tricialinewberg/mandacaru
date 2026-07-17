@@ -117,7 +117,10 @@ class WalletManagerImpl(
                 lockTime = lockTime,
             )
 
-            val derSignature = Secp256k1.sign(sighash, privateKey)
+            // Secp256k1.sign() returns a compact (64-byte r||s) signature, not DER - the SegWit
+            // witness requires strict DER encoding (BIP66), so it must be converted before use.
+            val compactSignature = Secp256k1.sign(sighash, privateKey)
+            val derSignature = Secp256k1.compact2der(compactSignature)
             val sigWithHashType = derSignature + TxPrimitives.SIGHASH_ALL_ANYONECANPAY.toByte()
             val compressedPubKey = compressedPublicKey(privateKey)
 

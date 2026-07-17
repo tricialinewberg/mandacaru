@@ -19,10 +19,18 @@ import java.net.Proxy
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class NostrClientImpl(private val preferencesDataSource: PreferencesDataSource) : NostrClient {
+class NostrClientImpl(
+    private val preferencesDataSource: PreferencesDataSource,
+    /** Seam for tests to substitute a fake [WebSocket]/capture the [WebSocketListener] without a real socket. */
+    private val openWebSocket: (OkHttpClient, Request, WebSocketListener) -> WebSocket = OkHttpClient::newWebSocket,
+) : NostrClient {
 
     @Volatile
     private var client: OkHttpClient = buildClient(proxy = null)
+
+    /** The [Proxy] address currently applied to [client] - `null` means clearnet (no proxy). */
+    @Volatile
+    private var currentProxyAddress: InetSocketAddress? = null
 
     private val sockets = ConcurrentHashMap<String, WebSocket>()
     private val activeSubscriptions = ConcurrentHashMap<String, NostrFilter>()
@@ -37,11 +45,21 @@ class NostrClientImpl(private val preferencesDataSource: PreferencesDataSource) 
             Log.w(TAG, "Tor is enabled but the configured SOCKS port is invalid - refusing to connect over clearnet")
             return
         }
-        client = buildClient(
-            proxy = settings.port?.takeIf { settings.enabled }
-                ?.let { port -> Proxy(Proxy.Type.SOCKS, InetSocketAddress(settings.host, port)) },
-        )
-        relayUrls.forEach { url -> connectToRelay(url) }
+        val proxyAddress = settings.port?.takeIf { settings.enabled }?.let { port -> InetSocketAddress(settings.host, port) }
+        val urlsToConnect = if (proxyAddress != currentProxyAddress) {
+            // The proxy configuration changed since the last connect() (e.g. Tor was just turned
+            // on/off in Settings) - force *every* already-open relay to reconnect through the new
+            // client, not just the ones passed to this call, so an existing connection can't
+            // silently keep using its old route (e.g. clearnet) until the app restarts.
+            val previouslyConnected = sockets.keys.toList()
+            closeAllSockets("proxy configuration changed")
+            client = buildClient(proxyAddress?.let { Proxy(Proxy.Type.SOCKS, it) })
+            currentProxyAddress = proxyAddress
+            (relayUrls + previouslyConnected).distinct()
+        } else {
+            relayUrls
+        }
+        urlsToConnect.forEach { url -> connectToRelay(url) }
     }
 
     private fun buildClient(proxy: Proxy?): OkHttpClient = OkHttpClient.Builder()
@@ -54,7 +72,7 @@ class NostrClientImpl(private val preferencesDataSource: PreferencesDataSource) 
     private fun connectToRelay(url: String) {
         if (sockets.containsKey(url)) return
         val request = Request.Builder().url(url).build()
-        val socket = client.newWebSocket(request, RelayListener(url))
+        val socket = openWebSocket(client, request, RelayListener(url))
         sockets[url] = socket
     }
 
@@ -87,9 +105,19 @@ class NostrClientImpl(private val preferencesDataSource: PreferencesDataSource) 
     }
 
     override fun disconnect() {
-        sockets.values.forEach { it.close(NORMAL_CLOSURE, "client disconnect") }
-        sockets.clear()
+        closeAllSockets("client disconnect")
         activeSubscriptions.clear()
+    }
+
+    /**
+     * Closes and forgets every currently-open socket. Deliberately leaves [activeSubscriptions]
+     * alone - callers reconnecting after this (e.g. a proxy-configuration change) still want their
+     * existing subscriptions re-issued once the new sockets open, per [RelayListener.onOpen]. Only
+     * [disconnect] (an explicit full teardown) additionally clears subscriptions itself.
+     */
+    private fun closeAllSockets(reason: String) {
+        sockets.values.forEach { it.close(NORMAL_CLOSURE, reason) }
+        sockets.clear()
     }
 
     private inner class RelayListener(private val relayUrl: String) : WebSocketListener() {
