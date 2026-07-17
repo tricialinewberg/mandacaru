@@ -150,6 +150,10 @@ dependencies {
     // can't load Android's Bionic-linked .so. Pull the desktop-native artifact for tests only, so
     // NostrCrypto (BIP340/ECDH, used throughout the CoinJoin round) actually works under `test`.
     testImplementation(libs.secp256k1.kmp.jni.jvm)
+    // Same reasoning as secp256k1-kmp-jni-jvm above: bdk-android's native lib is Android-only,
+    // so WalletManagerImplTest pulls the desktop-native bdk-jvm build (same BDK version/API) to
+    // exercise real BIP39/BIP84 derivation under `test` instead of a keystore-only fake.
+    testImplementation(libs.bdk.jvm)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

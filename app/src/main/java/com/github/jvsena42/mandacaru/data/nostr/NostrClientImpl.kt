@@ -19,7 +19,11 @@ import java.net.Proxy
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class NostrClientImpl(private val preferencesDataSource: PreferencesDataSource) : NostrClient {
+class NostrClientImpl(
+    private val preferencesDataSource: PreferencesDataSource,
+    /** Seam for tests to substitute a fake [WebSocket]/capture the [WebSocketListener] without a real socket. */
+    private val openWebSocket: (OkHttpClient, Request, WebSocketListener) -> WebSocket = OkHttpClient::newWebSocket,
+) : NostrClient {
 
     @Volatile
     private var client: OkHttpClient = buildClient(proxy = null)
@@ -54,7 +58,7 @@ class NostrClientImpl(private val preferencesDataSource: PreferencesDataSource) 
     private fun connectToRelay(url: String) {
         if (sockets.containsKey(url)) return
         val request = Request.Builder().url(url).build()
-        val socket = client.newWebSocket(request, RelayListener(url))
+        val socket = openWebSocket(client, request, RelayListener(url))
         sockets[url] = socket
     }
 

@@ -80,6 +80,7 @@ mlkit-barcode-scanning = { module = "com.google.mlkit:barcode-scanning", version
 org-json = { module = "org.json:json", version.ref = "orgJson" }
 hummingbird = { module = "com.sparrowwallet:hummingbird", version.ref = "hummingbird" }
 bdk-android = { module = "org.bitcoindevkit:bdk-android", version.ref = "bdk" }
+bdk-jvm = { module = "org.bitcoindevkit:bdk-jvm", version.ref = "bdk" }
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
 secp256k1-kmp = { module = "fr.acinq.secp256k1:secp256k1-kmp", version.ref = "secp256k1Kmp" }
 secp256k1-kmp-jni-android = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-android", version.ref = "secp256k1Kmp" }
