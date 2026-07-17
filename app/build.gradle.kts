@@ -173,3 +173,17 @@ dependencies {
 configurations.matching { it.name.startsWith("test", ignoreCase = true) }.configureEach {
     exclude(group = "org.bitcoindevkit", module = "bdk-android")
 }
+
+// Gradle's default test console output is a bare "ExceptionType at File:Line" per failure -
+// nowhere near enough to diagnose a native-binding failure. Print the full stack trace/cause
+// chain for failed tests so CI logs are actually actionable without downloading the HTML/XML
+// report artifact.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showStackTraces = true
+        showExceptions = true
+        events("failed")
+    }
+}
