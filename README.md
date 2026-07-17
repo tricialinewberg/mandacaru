@@ -211,7 +211,7 @@ The local signing wallet is a deliberate departure from the rest of the app's wa
 
 If you find this project useful, consider supporting development:
 
-**Lightning**: `jvsena42@blink.sv`
+**Lightning**: `tricia@evento.cash`
 
 ## License
 
