@@ -1,4 +1,4 @@
-# Cardo 🌸
+# IPÊ 🌸
 
 A privacy-focused, self-sovereign CoinJoin wallet for Android — powered by [Utreexo](https://dci.mit.edu/utreexo), [Floresta](https://github.com/vinteumorg/Floresta), and coordinated over [Nostr](https://nostr.com/).
 
