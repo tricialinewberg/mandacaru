@@ -7,6 +7,7 @@ import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockH
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockHeaderResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockchainInfoResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetPeerInfoResponse
+import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTxOutResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListDescriptorsResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListUnspentResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.SendRawTransactionResponse
@@ -82,6 +83,19 @@ interface FlorestaRpc {
      * @return A `Result` containing `ListUnspentResponse` with the matching UTXOs
      */
     fun listUnspent(minConfirmations: Int = 0): Flow<Result<ListUnspentResponse>>
+
+    /**
+     * Queries this node's own view of the chain for a specific outpoint - the standard way to
+     * confirm a claimed coin is real, unspent, and matches an expected amount/script, rather than
+     * trusting a peer's self-reported claim (used to validate CoinJoin registrations).
+     * @param txid The transaction id of the outpoint
+     * @param vout The output index of the outpoint
+     * @param includeMempool Whether an unconfirmed mempool output also counts as unspent (default
+     *   `false` - only a confirmed, on-chain output is accepted)
+     * @return A `Result` containing `GetTxOutResponse` whose `result` is `null` (not an error) if
+     *   the output is spent or doesn't exist
+     */
+    fun getTxOut(txid: String, vout: Int, includeMempool: Boolean = false): Flow<Result<GetTxOutResponse>>
 
     /**
      * Adds a new node to our list of peers. This will make our node try to connect to this peer.

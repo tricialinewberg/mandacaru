@@ -15,6 +15,7 @@ import com.github.jvsena42.mandacaru.domain.bitcoin.TxPrimitives
 import com.github.jvsena42.mandacaru.domain.coinjoin.CoinjoinEngine
 import com.github.jvsena42.mandacaru.domain.coinjoin.PoolContent
 import com.github.jvsena42.mandacaru.domain.coinjoin.RegisteredInput
+import com.github.jvsena42.mandacaru.domain.coinjoin.RegisteredInputClaim
 import com.github.jvsena42.mandacaru.domain.nostr.NostrCrypto
 import com.github.jvsena42.mandacaru.domain.wallet.CoinjoinOutput
 import com.github.jvsena42.mandacaru.domain.wallet.SignedContribution
@@ -157,23 +158,22 @@ class CoinjoinViewModel(
             return
         }
 
-        val registrations = mutableListOf<RegisteredInput>()
-        val registered = collectDirectMessages(
-            myPrivateKeyHex = creatorPrivateKeyHex,
-            timeoutMillis = pool.timeoutSeconds * MILLIS_PER_SECOND,
-        ) { senderPubKeyHex, payload ->
-            if (payload.optString("type") == "register" && registrations.size < pool.peers) {
-                registrations.add(RegisteredInput.fromJson(peerPublicKey = senderPubKeyHex, json = payload))
-            }
-            registrations.size >= pool.peers
-        }
-        if (!registered) {
+        val registrations = collectValidRegistrations(pool, creatorPrivateKeyHex) ?: run {
             failRound("Round timed out - not enough peers registered in time")
             return
         }
 
         val outputs = engine.broadcastFinalOutputs(pool, creatorPrivateKeyHex, registrations).getOrElse {
             showError(it.message ?: "Failed to finalize round outputs")
+            return
+        }
+
+        // Re-validate the full input set (including this creator's own) right before signing -
+        // not because Point A above was skipped, but so every peer, this one included, only ever
+        // signs against a set it has independently confirmed itself, in case a future change ever
+        // lets a doctored set reach this point some other way.
+        validateAllRegisteredInputs(registrations.map { RegisteredInputClaim.of(it) })?.let { reason ->
+            failRound(reason)
             return
         }
 
@@ -198,6 +198,37 @@ class CoinjoinViewModel(
             .onFailure { showError(it.message ?: "Failed to broadcast the joined transaction") }
     }
 
+    /**
+     * Collects `register` DMs until [pool.peers][PoolContent.peers] valid registrations have
+     * arrived, or `null` on timeout. Each registration is validated against this node's own chain
+     * state before being counted - a rejected registration doesn't fill a slot, it just keeps the
+     * round waiting (up to the existing registration timeout) for a legitimate replacement.
+     */
+    private suspend fun collectValidRegistrations(pool: PoolContent, creatorPrivateKeyHex: String): List<RegisteredInput>? {
+        val registrations = mutableListOf<RegisteredInput>()
+        val registered = collectDirectMessages(
+            myPrivateKeyHex = creatorPrivateKeyHex,
+            timeoutMillis = pool.timeoutSeconds * MILLIS_PER_SECOND,
+        ) { senderPubKeyHex, payload ->
+            if (payload.optString("type") == "register" && registrations.size < pool.peers) {
+                val candidate = RegisteredInput.fromJson(peerPublicKey = senderPubKeyHex, json = payload)
+                engine.validateRegisteredInput(RegisteredInputClaim.of(candidate)).fold(
+                    onSuccess = { registrations.add(candidate) },
+                    onFailure = { reason -> rejectRegistration(senderPubKeyHex, reason) },
+                )
+            }
+            registrations.size >= pool.peers
+        }
+        return if (registered) registrations else null
+    }
+
+    private fun rejectRegistration(senderPubKeyHex: String, reason: Throwable) {
+        Log.w(TAG, "Rejected registration from $senderPubKeyHex: ${reason.message}")
+        _uiState.update {
+            it.copy(activePoolStatus = "Rejected an invalid registration from a peer - waiting for others…")
+        }
+    }
+
     /** Non-creator leg: wait for the creator's final output list, sign this peer's own input, and send it back. */
     private suspend fun signAsNonCreator(
         network: FlorestaNetwork,
@@ -206,16 +237,26 @@ class CoinjoinViewModel(
         ownRegistrationPrivateKeyHex: String,
     ) {
         val outputs = mutableListOf<CoinjoinOutput>()
+        var inputClaims: List<RegisteredInputClaim> = emptyList()
         val received = collectDirectMessages(
             myPrivateKeyHex = ownRegistrationPrivateKeyHex,
             timeoutMillis = roundStageTimeoutMillis,
         ) { _, payload ->
             if (payload.optString("type") != "final_outputs") return@collectDirectMessages false
             outputs.addAll(parseFinalOutputs(payload))
+            inputClaims = parseRegisteredInputClaims(payload)
             true
         }
         if (!received) {
             failRound("Round timed out - never received this round's final output list")
+            return
+        }
+        // Non-creator peers never see other peers' registrations until this point - validate
+        // every one of them against this node's own chain state before signing, exactly like the
+        // creator does, so this peer never contributes a signature to a round it hasn't itself
+        // confirmed is backed by real, unspent, correctly-shaped coins.
+        validateAllRegisteredInputs(inputClaims)?.let { reason ->
+            failRound(reason)
             return
         }
         engine.signAndSubmit(
@@ -261,6 +302,27 @@ class CoinjoinViewModel(
         }
     }
 
+    /** Parses the `final_outputs` DM payload's `"inputs"` entries every peer validates before signing. */
+    private fun parseRegisteredInputClaims(payload: JSONObject): List<RegisteredInputClaim> {
+        val array = payload.optJSONArray("inputs") ?: return emptyList()
+        return List(array.length()) { index -> RegisteredInputClaim.fromJson(array.getJSONObject(index)) }
+    }
+
+    /**
+     * Confirms every registered input in the round against this device's own node before signing
+     * - run by every peer, including the creator, so a malicious or dishonest peer (or creator)
+     * can't sneak a fabricated UTXO into the round undetected. Returns a failure message naming
+     * the first invalid claim, or `null` if every input checks out.
+     */
+    private suspend fun validateAllRegisteredInputs(claims: List<RegisteredInputClaim>): String? {
+        claims.forEach { claim ->
+            engine.validateRegisteredInput(claim).onFailure {
+                return "Round aborted - a peer's registered input failed validation: ${it.message}"
+            }
+        }
+        return null
+    }
+
     /**
      * Collects decrypted DM payloads addressed to this ephemeral key until [onPayload] returns
      * true, or [timeoutMillis] elapses - returning `false` in that case so a stalled wait (e.g. a
@@ -272,7 +334,7 @@ class CoinjoinViewModel(
     private suspend fun collectDirectMessages(
         myPrivateKeyHex: String,
         timeoutMillis: Long,
-        onPayload: (String, JSONObject) -> Boolean,
+        onPayload: suspend (String, JSONObject) -> Boolean,
     ): Boolean {
         val privateKey = TxPrimitives.hexToBytes(myPrivateKeyHex)
         val completed = withTimeoutOrNull(timeoutMillis) {

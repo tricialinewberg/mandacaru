@@ -9,6 +9,7 @@ import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockH
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetBlockchainInfoResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetPeerInfoResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTransactionResponse
+import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.GetTxOutResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListDescriptorsResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListUnspentResponse
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.SendRawTransactionResponse
@@ -33,8 +34,12 @@ open class FakeFlorestaRpc : FlorestaRpc {
     var sendRawTransactionResult: Result<SendRawTransactionResponse> =
         Result.success(SendRawTransactionResponse(id = 1, jsonrpc = "2.0", result = "txid"))
 
+    /** Keyed by `"txid:vout"`. An outpoint with no entry behaves like an unconfigured RPC call - no emission. */
+    var getTxOutResults: Map<String, Result<GetTxOutResponse>> = emptyMap()
+
     val getTransactionCalls = mutableListOf<String>()
     val sentRawTransactions = mutableListOf<String>()
+    val getTxOutCalls = mutableListOf<Pair<String, Int>>()
 
     override fun getBlockchainInfo(): Flow<Result<GetBlockchainInfoResponse>> =
         blockchainInfoResults.asFlow()
@@ -57,6 +62,12 @@ open class FakeFlorestaRpc : FlorestaRpc {
     override fun listUnspent(minConfirmations: Int): Flow<Result<ListUnspentResponse>> = flow {
         listUnspentResult?.let { emit(it) }
     }
+
+    override fun getTxOut(txid: String, vout: Int, includeMempool: Boolean): Flow<Result<GetTxOutResponse>> = flow {
+        getTxOutCalls.add(txid to vout)
+        getTxOutResults["$txid:$vout"]?.let { emit(it) }
+    }
+
     override fun addNode(node: String, command: AddNodeCommand): Flow<Result<AddNodeResponse>> =
         emptyFlow()
 
