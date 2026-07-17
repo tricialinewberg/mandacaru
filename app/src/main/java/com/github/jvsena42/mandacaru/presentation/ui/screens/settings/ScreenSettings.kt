@@ -934,7 +934,7 @@ private fun ScreenSettings(
                 // Donate Section
                 item {
                     val clipboardManager = LocalClipboardManager.current
-                    val donateAddress = "jvsena42@blink.sv"
+                    val donateAddress = "tricia@evento.cash"
                     val copiedMessage = stringResource(R.string.lightning_address_copied)
 
                     SectionCard(
