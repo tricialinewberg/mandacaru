@@ -19,6 +19,10 @@ interface WalletKeyStore {
     /** Index of the next unused external (receive) address, for gap-free address display. */
     fun getNextExternalIndex(): Int
     fun setNextExternalIndex(index: Int)
+
+    /** Index of the next unused internal (change) address. */
+    fun getNextInternalIndex(): Int
+    fun setNextInternalIndex(index: Int)
 }
 
 class WalletKeyStoreImpl(context: Context) : WalletKeyStore {
@@ -46,7 +50,11 @@ class WalletKeyStoreImpl(context: Context) : WalletKeyStore {
     }
 
     override fun clear() {
-        prefs.edit().remove(KEY_MNEMONIC).remove(KEY_NEXT_EXTERNAL_INDEX).apply()
+        prefs.edit()
+            .remove(KEY_MNEMONIC)
+            .remove(KEY_NEXT_EXTERNAL_INDEX)
+            .remove(KEY_NEXT_INTERNAL_INDEX)
+            .apply()
     }
 
     override fun getNextExternalIndex(): Int = prefs.getInt(KEY_NEXT_EXTERNAL_INDEX, 0)
@@ -55,9 +63,16 @@ class WalletKeyStoreImpl(context: Context) : WalletKeyStore {
         prefs.edit().putInt(KEY_NEXT_EXTERNAL_INDEX, index).apply()
     }
 
+    override fun getNextInternalIndex(): Int = prefs.getInt(KEY_NEXT_INTERNAL_INDEX, 0)
+
+    override fun setNextInternalIndex(index: Int) {
+        prefs.edit().putInt(KEY_NEXT_INTERNAL_INDEX, index).apply()
+    }
+
     private companion object {
         const val PREFS_FILE_NAME = "wallet_secure_prefs"
         const val KEY_MNEMONIC = "mnemonic"
         const val KEY_NEXT_EXTERNAL_INDEX = "next_external_index"
+        const val KEY_NEXT_INTERNAL_INDEX = "next_internal_index"
     }
 }

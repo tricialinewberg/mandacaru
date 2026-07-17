@@ -1,17 +1,26 @@
 package com.github.jvsena42.mandacaru.data.wallet
 
 import com.florestad.Network
+import com.github.jvsena42.mandacaru.domain.bitcoin.BitcoinHash
 import com.github.jvsena42.mandacaru.domain.bitcoin.SegwitAddress
 import com.github.jvsena42.mandacaru.domain.bitcoin.TxPrimitives
+import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.ListUnspentResponse
+import com.github.jvsena42.mandacaru.domain.model.florestaRPC.response.UnspentItem
 import com.github.jvsena42.mandacaru.domain.wallet.CoinjoinOutput
 import com.github.jvsena42.mandacaru.domain.wallet.WalletUtxo
+import com.github.jvsena42.mandacaru.fakes.FakeFlorestaRpc
 import com.github.jvsena42.mandacaru.fakes.FakeWalletKeyStore
 import fr.acinq.secp256k1.Secp256k1
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
+import org.bitcoindevkit.DerivationPath
+import org.bitcoindevkit.DescriptorSecretKey
+import org.bitcoindevkit.Mnemonic
+import org.bitcoindevkit.Network as BdkNetwork
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -34,7 +43,7 @@ import org.junit.Test
  */
 class WalletManagerImplTest {
 
-    private fun newManager() = WalletManagerImpl(FakeWalletKeyStore())
+    private fun newManager(rpc: FakeFlorestaRpc = FakeFlorestaRpc()) = WalletManagerImpl(FakeWalletKeyStore(), rpc)
 
     @Test
     fun `hasWallet is false until ensureWallet or restoreFromMnemonic is called`() = runBlocking {
@@ -157,6 +166,76 @@ class WalletManagerImplTest {
         }
 
         assertEquals(concurrentCalls, addresses.toSet().size)
+    }
+
+    @Test
+    fun `recoverNextAddressIndices finds the resume point on both chains after a gap-limit scan`() = runBlocking {
+        val rpc = FakeFlorestaRpc()
+        val manager = newManager(rpc)
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
+
+        // External chain: addresses used at indices 0, 3, and 7.
+        val externalAddresses = (0..7).map { manager.getNewReceiveAddress(Network.BITCOIN).getOrThrow() }
+        val usedExternalScriptPubKeys = listOf(0, 3, 7).map { index ->
+            TxPrimitives.bytesToHex(TxPrimitives.p2wpkhScriptPubKey(SegwitAddress.decodeProgram(externalAddresses[index])!!))
+        }
+        // Internal/change chain: used at indices 1 and 4 - independently re-derived (BIP84 chain=1),
+        // since no WalletManager method exposes change addresses today.
+        val usedInternalScriptPubKeys = listOf(1, 4).map { deriveInternalScriptPubKeyHex(it) }
+        rpc.listUnspentResult = Result.success(
+            ListUnspentResponse(
+                id = 1,
+                jsonrpc = "2.0",
+                result = (usedExternalScriptPubKeys + usedInternalScriptPubKeys).mapIndexed { i, scriptPubKeyHex ->
+                    UnspentItem(
+                        txid = "aa".repeat(32),
+                        vout = i,
+                        address = null,
+                        scriptPubKey = scriptPubKeyHex,
+                        amount = 0.0001,
+                        confirmations = 6,
+                    )
+                },
+            ),
+        )
+
+        // Re-restore to reset both indices back to 0, simulating a fresh restore right before a
+        // recovery scan runs - without the fix, this is exactly the state that re-offers used addresses.
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
+
+        val recovered = manager.recoverNextAddressIndices(Network.BITCOIN).getOrThrow()
+
+        assertEquals(8, recovered.nextExternalIndex)
+        assertEquals(5, recovered.nextInternalIndex)
+    }
+
+    @Test
+    fun `recoverNextAddressIndices fails and leaves indices untouched when the node is unreachable`() = runBlocking {
+        val rpc = FakeFlorestaRpc()
+        val manager = newManager(rpc)
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
+        rpc.listUnspentResult = Result.failure(IOException("node unreachable"))
+
+        val result = manager.recoverNextAddressIndices(Network.BITCOIN)
+
+        assertTrue(result.isFailure)
+        // Falls back to the safe post-restore default (index 0) rather than silently guessing.
+        assertEquals(
+            "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
+            manager.getNewReceiveAddress(Network.BITCOIN).getOrThrow(),
+        )
+    }
+
+    /** Independently re-derives the BIP84 change-chain (chain=1) P2WPKH scriptPubKey for [index]. */
+    private fun deriveInternalScriptPubKeyHex(index: Int): String {
+        val mnemonic = Mnemonic.fromString(TEST_MNEMONIC)
+        val master = DescriptorSecretKey(BdkNetwork.BITCOIN, mnemonic, null)
+        val leaf = master.derive(DerivationPath("m/84h/0h/0h/1/$index"))
+        val privateKey = leaf.secretBytes()
+        val uncompressed = Secp256k1.pubkeyCreate(privateKey)
+        val compressed = Secp256k1.pubKeyCompress(uncompressed)
+        val pubKeyHash = BitcoinHash.hash160(compressed)
+        return TxPrimitives.bytesToHex(TxPrimitives.p2wpkhScriptPubKey(pubKeyHash))
     }
 
     @Test

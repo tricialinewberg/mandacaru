@@ -3,6 +3,7 @@ package com.github.jvsena42.mandacaru.fakes
 import com.florestad.Network
 import com.github.jvsena42.mandacaru.domain.bitcoin.SegwitAddress
 import com.github.jvsena42.mandacaru.domain.wallet.CoinjoinOutput
+import com.github.jvsena42.mandacaru.domain.wallet.RecoveredAddressIndices
 import com.github.jvsena42.mandacaru.domain.wallet.SignedContribution
 import com.github.jvsena42.mandacaru.domain.wallet.WalletManager
 import com.github.jvsena42.mandacaru.domain.wallet.WalletUtxo
@@ -31,6 +32,9 @@ class FakeWalletManager : WalletManager {
         val hash = ByteArray(HASH160_SIZE).also { it[0] = (++nextAddressIndex).toByte() }
         return Result.success(SegwitAddress.p2wpkh("bcrt", hash))
     }
+
+    override suspend fun recoverNextAddressIndices(network: Network): Result<RecoveredAddressIndices> =
+        Result.success(RecoveredAddressIndices(nextExternalIndex = 0, nextInternalIndex = 0))
 
     override suspend fun signCoinjoinContribution(
         network: Network,

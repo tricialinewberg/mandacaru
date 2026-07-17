@@ -140,7 +140,7 @@ val dataModule = module {
     factory<DescriptorQrScanner> { DefaultDescriptorQrScanner() }
     single<TransactionDecoder> { BdkTransactionDecoder() }
     single<WalletKeyStore> { WalletKeyStoreImpl(context = androidContext()) }
-    single<WalletManager> { WalletManagerImpl(keyStore = get()) }
+    single<WalletManager> { WalletManagerImpl(keyStore = get(), florestaRpc = get()) }
     single<NostrClient> { NostrClientImpl(preferencesDataSource = get()) }
     single<ProxyReachabilityChecker> { SocketProxyReachabilityChecker() }
     single {
