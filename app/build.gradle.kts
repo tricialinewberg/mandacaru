@@ -162,3 +162,14 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }
+
+// Unlike secp256k1-kmp (a true Kotlin Multiplatform project whose native-only jni-android/jni-jvm
+// artifacts carry no Kotlin classes, only the .so), BDK's UniFFI-generated bindings bundle the
+// full org.bitcoindevkit.* Kotlin wrapper *and* the native lib together in each of bdk-android and
+// bdk-jvm. Both end up on the unit test runtime classpath (bdk-android via `implementation`,
+// bdk-jvm via `testImplementation`) with the same class names, so whichever the JVM happens to
+// load first wins - excluding bdk-android from the test configurations guarantees it's bdk-jvm's
+// desktop-native classes that get used when running under `test`.
+configurations.matching { it.name.startsWith("test", ignoreCase = true) }.configureEach {
+    exclude(group = "org.bitcoindevkit", module = "bdk-android")
+}
