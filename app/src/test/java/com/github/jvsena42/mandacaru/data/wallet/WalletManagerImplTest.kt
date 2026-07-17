@@ -7,6 +7,10 @@ import com.github.jvsena42.mandacaru.domain.wallet.CoinjoinOutput
 import com.github.jvsena42.mandacaru.domain.wallet.WalletUtxo
 import com.github.jvsena42.mandacaru.fakes.FakeWalletKeyStore
 import fr.acinq.secp256k1.Secp256k1
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -243,8 +247,49 @@ class WalletManagerImplTest {
         assertTrue(Secp256k1.verify(sigDerOnly, expectedSighash, pubKey))
     }
 
+    @Test
+    fun `getNewReceiveAddress is safe under concurrent callers - no two ever get the same index or address`() = runBlocking {
+        val keyStore = SlowFakeWalletKeyStore()
+        val manager = WalletManagerImpl(keyStore)
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
+
+        // Dispatchers.Default is a real multi-threaded pool - this is genuine concurrency, not
+        // just interleaved suspension points on a single thread.
+        val addresses = coroutineScope {
+            (1..CONCURRENT_CALLERS)
+                .map { async(Dispatchers.Default) { manager.getNewReceiveAddress(Network.BITCOIN).getOrThrow() } }
+                .awaitAll()
+        }
+
+        assertEquals(
+            "every concurrent caller must get a distinct address - a duplicate means the index " +
+                "counter's read-increment-write raced and the same key was derived (and would be " +
+                "reused on-chain) twice",
+            CONCURRENT_CALLERS,
+            addresses.toSet().size,
+        )
+        assertEquals(CONCURRENT_CALLERS, keyStore.getNextExternalIndex())
+    }
+
+    /**
+     * Wraps [FakeWalletKeyStore] with a deliberate delay between reading and the caller's
+     * subsequent write of the next-external-index counter, to reliably widen the race window for
+     * the concurrency test above instead of depending on thread-scheduling luck.
+     */
+    private class SlowFakeWalletKeyStore(
+        private val delegate: WalletKeyStore = FakeWalletKeyStore(),
+    ) : WalletKeyStore by delegate {
+        override fun getNextExternalIndex(): Int {
+            val index = delegate.getNextExternalIndex()
+            Thread.sleep(READ_TO_WRITE_DELAY_MS)
+            return index
+        }
+    }
+
     private companion object {
         const val TEST_MNEMONIC =
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        const val CONCURRENT_CALLERS = 20
+        const val READ_TO_WRITE_DELAY_MS = 5L
     }
 }

@@ -11,6 +11,8 @@ import com.github.jvsena42.mandacaru.domain.wallet.WalletManager
 import com.github.jvsena42.mandacaru.domain.wallet.WalletUtxo
 import fr.acinq.secp256k1.Secp256k1
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.bitcoindevkit.DerivationPath
 import org.bitcoindevkit.Descriptor
@@ -32,6 +34,17 @@ class WalletManagerImpl(
     private val keyStore: WalletKeyStore,
 ) : WalletManager {
 
+    /**
+     * Guards every read-then-write of [WalletKeyStore]'s next-external-index counter.
+     * `EncryptedSharedPreferences` (the real [WalletKeyStore]'s backing store) has no atomic
+     * increment/CAS primitive, so without this, two concurrent [getNewReceiveAddress] calls could
+     * both read the same index before either writes the increment back, deriving and returning
+     * the *same* address twice - a real privacy regression (address reuse) even though no funds
+     * are at risk. Not reentrant: nothing this mutex guards ever calls back into another method
+     * that also acquires it, so there's no nested-acquisition deadlock risk.
+     */
+    private val nextIndexMutex = Mutex()
+
     override suspend fun hasWallet(): Boolean = withContext(Dispatchers.Default) {
         keyStore.hasMnemonic()
     }
@@ -42,7 +55,7 @@ class WalletManagerImpl(
                 if (!keyStore.hasMnemonic()) {
                     val mnemonic = Mnemonic(WordCount.WORDS12)
                     keyStore.saveMnemonic(mnemonic.toString())
-                    keyStore.setNextExternalIndex(0)
+                    nextIndexMutex.withLock { keyStore.setNextExternalIndex(0) }
                 }
             }
         }
@@ -53,7 +66,7 @@ class WalletManagerImpl(
                 // Validates the checksum/wordlist - throws on a malformed phrase.
                 Mnemonic.fromString(mnemonic)
                 keyStore.saveMnemonic(mnemonic)
-                keyStore.setNextExternalIndex(0)
+                nextIndexMutex.withLock { keyStore.setNextExternalIndex(0) }
             }
         }
 
@@ -78,10 +91,15 @@ class WalletManagerImpl(
         withContext(Dispatchers.Default) {
             runSuspendCatching {
                 val mnemonic = requireMnemonic()
-                val index = keyStore.getNextExternalIndex()
-                val (_, pubKeyHash) = deriveKeyPair(mnemonic, network, EXTERNAL_CHAIN, index)
-                keyStore.setNextExternalIndex(index + 1)
-                SegwitAddress.p2wpkh(hrpFor(network), pubKeyHash)
+                // The read, derive, and write-back must happen as one atomic unit - claiming an
+                // index and deriving its address can't be split across two lock acquisitions,
+                // or two callers could still both derive the same index in the gap between them.
+                nextIndexMutex.withLock {
+                    val index = keyStore.getNextExternalIndex()
+                    val (_, pubKeyHash) = deriveKeyPair(mnemonic, network, EXTERNAL_CHAIN, index)
+                    keyStore.setNextExternalIndex(index + 1)
+                    SegwitAddress.p2wpkh(hrpFor(network), pubKeyHash)
+                }
             }
         }
 
