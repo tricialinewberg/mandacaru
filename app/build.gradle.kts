@@ -168,9 +168,20 @@ dependencies {
 // full org.bitcoindevkit.* Kotlin wrapper *and* the native lib together in each of bdk-android and
 // bdk-jvm. Both end up on the unit test runtime classpath (bdk-android via `implementation`,
 // bdk-jvm via `testImplementation`) with the same class names, so whichever the JVM happens to
-// load first wins - excluding bdk-android from the test configurations guarantees it's bdk-jvm's
-// desktop-native classes that get used when running under `test`.
-configurations.matching { it.name.startsWith("test", ignoreCase = true) }.configureEach {
+// load first wins - excluding bdk-android from the unit test configurations guarantees it's
+// bdk-jvm's desktop-native classes that get used when running under `test`.
+//
+// AGP does NOT name the resolved unit-test classpaths with a "test" prefix - they're named after
+// the build type, e.g. "debugUnitTestRuntimeClasspath"/"debugUnitTestCompileClasspath". Matching
+// only `name.startsWith("test")` (as an earlier version of this block did) only reaches
+// source-set-level configurations like `testImplementation`, never the classpath Gradle actually
+// resolves to run `testDebugUnitTest` - so bdk-android was never really excluded from it. Match on
+// "UnitTest" (AGP's actual naming) as well so the exclude reaches the classpath that matters, while
+// leaving the real app's "debugRuntimeClasspath"/"debugCompileClasspath" (which need bdk-android)
+// untouched.
+configurations.matching {
+    it.name.startsWith("test", ignoreCase = true) || it.name.contains("UnitTest")
+}.configureEach {
     exclude(group = "org.bitcoindevkit", module = "bdk-android")
 }
 

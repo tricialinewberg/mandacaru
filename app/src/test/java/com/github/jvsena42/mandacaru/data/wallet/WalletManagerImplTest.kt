@@ -37,7 +37,9 @@ class WalletManagerImplTest {
         val manager = newManager()
 
         assertFalse(manager.hasWallet())
-        manager.ensureWallet(Network.BITCOIN)
+        // .getOrThrow() (not a bare call) so a native-binding failure surfaces here as the test's
+        // own failure cause, instead of cascading into a generic "no wallet" error from a later call.
+        manager.ensureWallet(Network.BITCOIN).getOrThrow()
 
         assertTrue(manager.hasWallet())
     }
@@ -46,9 +48,8 @@ class WalletManagerImplTest {
     fun `ensureWallet generates a fresh 12-word mnemonic when none exists`() = runBlocking {
         val manager = newManager()
 
-        val result = manager.ensureWallet(Network.BITCOIN)
+        manager.ensureWallet(Network.BITCOIN).getOrThrow()
 
-        assertTrue(result.isSuccess)
         val mnemonic = manager.revealMnemonic().getOrThrow()
         assertEquals(12, mnemonic.trim().split(" ").size)
     }
@@ -56,10 +57,10 @@ class WalletManagerImplTest {
     @Test
     fun `ensureWallet does not overwrite an existing mnemonic`() = runBlocking {
         val manager = newManager()
-        manager.ensureWallet(Network.BITCOIN)
+        manager.ensureWallet(Network.BITCOIN).getOrThrow()
         val original = manager.revealMnemonic().getOrThrow()
 
-        manager.ensureWallet(Network.BITCOIN)
+        manager.ensureWallet(Network.BITCOIN).getOrThrow()
 
         assertEquals(original, manager.revealMnemonic().getOrThrow())
     }
@@ -68,9 +69,8 @@ class WalletManagerImplTest {
     fun `restoreFromMnemonic accepts a valid phrase and reveals it back verbatim`() = runBlocking {
         val manager = newManager()
 
-        val result = manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN)
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
 
-        assertTrue(result.isSuccess)
         assertEquals(TEST_MNEMONIC, manager.revealMnemonic().getOrThrow())
     }
 
@@ -98,7 +98,7 @@ class WalletManagerImplTest {
     @Test
     fun `watchDescriptors returns two distinct public-only descriptors`() = runBlocking {
         val manager = newManager()
-        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN)
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
 
         val descriptors = manager.watchDescriptors(Network.BITCOIN).getOrThrow()
 
@@ -116,7 +116,7 @@ class WalletManagerImplTest {
     @Test
     fun `getNewReceiveAddress matches BIP84's own published test vector and increments gap-free`() = runBlocking {
         val manager = newManager()
-        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN)
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
 
         val first = manager.getNewReceiveAddress(Network.BITCOIN).getOrThrow()
         val second = manager.getNewReceiveAddress(Network.BITCOIN).getOrThrow()
@@ -129,7 +129,7 @@ class WalletManagerImplTest {
     @Test
     fun `getNewReceiveAddress uses the testnet hrp and coin type for non-mainnet networks`() = runBlocking {
         val manager = newManager()
-        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.TESTNET)
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.TESTNET).getOrThrow()
 
         val address = manager.getNewReceiveAddress(Network.TESTNET).getOrThrow()
 
@@ -139,7 +139,7 @@ class WalletManagerImplTest {
     @Test
     fun `signCoinjoinContribution fails when the wallet does not control the input's scriptPubKey`() = runBlocking {
         val manager = newManager()
-        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN)
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
         val foreignUtxo = WalletUtxo(
             txid = "aa".repeat(32),
             vout = 0,
@@ -162,7 +162,7 @@ class WalletManagerImplTest {
     @Test
     fun `signCoinjoinContribution produces the exact expected DER signature for a known key and inputs`() = runBlocking {
         val manager = newManager()
-        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN)
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
         // Forces derivation of m/84h/0h/0h/0/0 - the same BIP84 test-vector key used above,
         // whose private key (and therefore expected signature) was computed independently.
         val ownedAddress = manager.getNewReceiveAddress(Network.BITCOIN).getOrThrow()
@@ -202,7 +202,7 @@ class WalletManagerImplTest {
     @Test
     fun `signCoinjoinContribution's signature independently verifies against the recomputed sighash`() = runBlocking {
         val manager = newManager()
-        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN)
+        manager.restoreFromMnemonic(TEST_MNEMONIC, Network.BITCOIN).getOrThrow()
         val ownedAddress = manager.getNewReceiveAddress(Network.BITCOIN).getOrThrow()
         val pubKeyHash = SegwitAddress.decodeProgram(ownedAddress)!!
         val utxo = WalletUtxo(
