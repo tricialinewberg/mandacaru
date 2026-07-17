@@ -42,6 +42,20 @@ interface WalletManager {
     suspend fun getNewReceiveAddress(network: Network): Result<String>
 
     /**
+     * Recovers the gap-free `nextExternalIndex`/`nextInternalIndex` after a restore, which
+     * otherwise starts back at 0 and would re-offer already-used addresses. Scans both BIP44
+     * chains sequentially from index 0 against the node's current UTXO set (via `listUnspent`),
+     * stopping each chain after 20 consecutive addresses with no match (the standard gap limit),
+     * and persists the index just past the last used address found on each chain.
+     *
+     * Callers must load this wallet's descriptors into the node and wait for any rescan to finish
+     * before calling this - it only sees addresses the node has already scanned for. Because the
+     * node only reports *currently unspent* outputs, an address that was used and later fully
+     * spent is invisible to this scan and won't be counted as used.
+     */
+    suspend fun recoverNextAddressIndices(network: Network): Result<RecoveredAddressIndices>
+
+    /**
      * Signs this peer's own input into a Joinstr round with
      * `SIGHASH_ALL | ANYONECANPAY`. Per BIP143, that hash type still commits
      * to *every* output of the joined transaction (only the other peers'
@@ -64,6 +78,12 @@ interface WalletManager {
 data class CoinjoinOutput(
     val scriptPubKeyHex: String,
     val amountSats: Long,
+)
+
+/** Resume points found by [WalletManager.recoverNextAddressIndices]'s post-restore gap scan. */
+data class RecoveredAddressIndices(
+    val nextExternalIndex: Int,
+    val nextInternalIndex: Int,
 )
 
 /** One peer's signed input, ready to be merged into the joined transaction. */

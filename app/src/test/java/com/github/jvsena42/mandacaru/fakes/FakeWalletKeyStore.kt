@@ -13,6 +13,7 @@ import com.github.jvsena42.mandacaru.data.wallet.WalletKeyStore
 class FakeWalletKeyStore : WalletKeyStore {
     private var mnemonic: String? = null
     private var nextExternalIndex: Int = 0
+    private var nextInternalIndex: Int = 0
 
     override fun hasMnemonic(): Boolean = mnemonic != null
 
@@ -25,11 +26,18 @@ class FakeWalletKeyStore : WalletKeyStore {
     override fun clear() {
         mnemonic = null
         nextExternalIndex = 0
+        nextInternalIndex = 0
     }
 
     override fun getNextExternalIndex(): Int = nextExternalIndex
 
     override fun setNextExternalIndex(index: Int) {
         nextExternalIndex = index
+    }
+
+    override fun getNextInternalIndex(): Int = nextInternalIndex
+
+    override fun setNextInternalIndex(index: Int) {
+        nextInternalIndex = index
     }
 }

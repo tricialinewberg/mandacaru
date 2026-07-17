@@ -2,15 +2,18 @@ package com.github.jvsena42.mandacaru.data.wallet
 
 import com.florestad.Network as FlorestaNetwork
 import com.github.jvsena42.mandacaru.common.runSuspendCatching
+import com.github.jvsena42.mandacaru.data.FlorestaRpc
 import com.github.jvsena42.mandacaru.domain.bitcoin.BitcoinHash
 import com.github.jvsena42.mandacaru.domain.bitcoin.SegwitAddress
 import com.github.jvsena42.mandacaru.domain.bitcoin.TxPrimitives
 import com.github.jvsena42.mandacaru.domain.wallet.CoinjoinOutput
+import com.github.jvsena42.mandacaru.domain.wallet.RecoveredAddressIndices
 import com.github.jvsena42.mandacaru.domain.wallet.SignedContribution
 import com.github.jvsena42.mandacaru.domain.wallet.WalletManager
 import com.github.jvsena42.mandacaru.domain.wallet.WalletUtxo
 import fr.acinq.secp256k1.Secp256k1
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -32,12 +35,14 @@ import org.bitcoindevkit.Network as BdkNetwork
  */
 class WalletManagerImpl(
     private val keyStore: WalletKeyStore,
+    private val florestaRpc: FlorestaRpc,
 ) : WalletManager {
 
-    // Guards the getNextExternalIndex -> setNextExternalIndex read-increment-write in
-    // getNewReceiveAddress: EncryptedSharedPreferences has no atomic increment, so without this,
-    // concurrent calls can read the same index and hand out (and persist) a duplicate address.
-    private val nextExternalIndexMutex = Mutex()
+    // Guards the read -> derive -> increment -> write sequences touching the stored address
+    // indices (getNewReceiveAddress, recoverNextAddressIndices): EncryptedSharedPreferences has no
+    // atomic increment, so without this, concurrent calls can read the same index and hand out
+    // (and persist) a duplicate address.
+    private val addressIndexMutex = Mutex()
 
     override suspend fun hasWallet(): Boolean = withContext(Dispatchers.Default) {
         keyStore.hasMnemonic()
@@ -50,6 +55,7 @@ class WalletManagerImpl(
                     val mnemonic = Mnemonic(WordCount.WORDS12)
                     keyStore.saveMnemonic(mnemonic.toString())
                     keyStore.setNextExternalIndex(0)
+                    keyStore.setNextInternalIndex(0)
                 }
             }
         }
@@ -61,6 +67,7 @@ class WalletManagerImpl(
                 Mnemonic.fromString(mnemonic)
                 keyStore.saveMnemonic(mnemonic)
                 keyStore.setNextExternalIndex(0)
+                keyStore.setNextInternalIndex(0)
             }
         }
 
@@ -85,13 +92,28 @@ class WalletManagerImpl(
         withContext(Dispatchers.Default) {
             runSuspendCatching {
                 val mnemonic = requireMnemonic()
-                val pubKeyHash = nextExternalIndexMutex.withLock {
+                val pubKeyHash = addressIndexMutex.withLock {
                     val index = keyStore.getNextExternalIndex()
                     val (_, pubKeyHash) = deriveKeyPair(mnemonic, network, EXTERNAL_CHAIN, index)
                     keyStore.setNextExternalIndex(index + 1)
                     pubKeyHash
                 }
                 SegwitAddress.p2wpkh(hrpFor(network), pubKeyHash)
+            }
+        }
+
+    override suspend fun recoverNextAddressIndices(network: FlorestaNetwork): Result<RecoveredAddressIndices> =
+        withContext(Dispatchers.Default) {
+            runSuspendCatching {
+                val mnemonic = requireMnemonic()
+                val usedScriptPubKeys = fetchUsedScriptPubKeys()
+                addressIndexMutex.withLock {
+                    val nextExternal = scanNextUnusedIndex(mnemonic, network, EXTERNAL_CHAIN, usedScriptPubKeys)
+                    val nextInternal = scanNextUnusedIndex(mnemonic, network, INTERNAL_CHAIN, usedScriptPubKeys)
+                    keyStore.setNextExternalIndex(nextExternal)
+                    keyStore.setNextInternalIndex(nextInternal)
+                    RecoveredAddressIndices(nextExternalIndex = nextExternal, nextInternalIndex = nextInternal)
+                }
             }
         }
 
@@ -160,6 +182,48 @@ class WalletManagerImpl(
         return Descriptor.newBip84(master, keychain, bdkNetwork).toString()
     }
 
+    /**
+     * The node's current view of used scriptPubKeys, as a lowercase-hex set - built from a single
+     * `listUnspent` call rather than one RPC round-trip per candidate index. Only reflects
+     * currently unspent outputs; see [WalletManager.recoverNextAddressIndices]'s doc for the
+     * resulting blind spot on addresses that were used and later fully spent.
+     */
+    private suspend fun fetchUsedScriptPubKeys(): Set<String> {
+        val response = florestaRpc.listUnspent().firstOrNull()
+            ?: error("No response from node for listUnspent")
+        return response.getOrThrow().result.orEmpty()
+            .mapNotNull { it.scriptPubKey?.lowercase() }
+            .toSet()
+    }
+
+    /**
+     * Walks [chain] sequentially from index 0, stopping after [RECOVERY_GAP_LIMIT] consecutive
+     * addresses absent from [usedScriptPubKeys], and returns the index just past the last match
+     * found (0 if none).
+     */
+    private fun scanNextUnusedIndex(
+        mnemonic: String,
+        network: FlorestaNetwork,
+        chain: Int,
+        usedScriptPubKeys: Set<String>,
+    ): Int {
+        var lastUsedIndex = -1
+        var consecutiveUnused = 0
+        var index = 0
+        while (consecutiveUnused < RECOVERY_GAP_LIMIT) {
+            val (_, pubKeyHash) = deriveKeyPair(mnemonic, network, chain, index)
+            val scriptPubKeyHex = TxPrimitives.bytesToHex(TxPrimitives.p2wpkhScriptPubKey(pubKeyHash))
+            if (scriptPubKeyHex in usedScriptPubKeys) {
+                lastUsedIndex = index
+                consecutiveUnused = 0
+            } else {
+                consecutiveUnused++
+            }
+            index++
+        }
+        return lastUsedIndex + 1
+    }
+
     /** Scans the BIP84 external/internal chains for the key whose P2WPKH script matches. */
     private fun findSigningKeyForScript(
         mnemonic: String,
@@ -221,6 +285,7 @@ class WalletManagerImpl(
         const val EXTERNAL_CHAIN = 0
         const val INTERNAL_CHAIN = 1
         const val GAP_LIMIT = 500
+        const val RECOVERY_GAP_LIMIT = 20
         const val OPT_IN_RBF_SEQUENCE = 0xfffffffdL
     }
 }
