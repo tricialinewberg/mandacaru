@@ -214,6 +214,53 @@ class NostrClientImplTest {
         assertTrue("must fail closed rather than silently connect over clearnet", factory.connections.isEmpty())
     }
 
+    @Test
+    fun `enabling Tor mid-session forces every already-connected relay to reconnect, not just the ones in this call`() = runBlocking {
+        val factory = FakeWebSocketFactory()
+        val prefs = FakePreferencesDataSource()
+        val client = NostrClientImpl(prefs, factory.opener)
+
+        // Mirrors CoinjoinViewModel's real usage: an initial connect() to every discovery relay,
+        // then later, unrelated connect() calls (registerInput/createPool) that only pass one.
+        client.connect(listOf("wss://relay.one", "wss://relay.two"))
+        val original = factory.connections.toList()
+        original.forEach { assertNull(it.client.proxy) }
+
+        prefs.setBoolean(PreferenceKeys.TOR_ENABLED, true)
+        prefs.setString(PreferenceKeys.TOR_SOCKS_HOST, "127.0.0.1")
+        prefs.setString(PreferenceKeys.TOR_SOCKS_PORT, "9050")
+        client.connect(listOf("wss://relay.one"))
+
+        // The original sockets must be torn down - left connected over clearnet would defeat the
+        // point of just having enabled Tor.
+        original.forEach { connection ->
+            assertEquals(1000, connection.socket.closeCode)
+            assertEquals("proxy configuration changed", connection.socket.closeReason)
+        }
+        // Both relay.one *and* relay.two (never mentioned in this second connect() call) must be
+        // reopened through the new SOCKS-proxied client - not just relay.one.
+        val reconnected = factory.connections.drop(original.size)
+        assertEquals(2, reconnected.size)
+        assertEquals(2, reconnected.map { it.request.url.toString() }.distinct().size)
+        reconnected.forEach { connection ->
+            assertEquals(Proxy.Type.SOCKS, connection.client.proxy?.type())
+            assertEquals(InetSocketAddress("127.0.0.1", 9050), connection.client.proxy?.address())
+        }
+    }
+
+    @Test
+    fun `an unchanged proxy configuration does not force a reconnect`() = runBlocking {
+        val factory = FakeWebSocketFactory()
+        val prefs = FakePreferencesDataSource()
+        val client = NostrClientImpl(prefs, factory.opener)
+        client.connect(listOf("wss://relay.one"))
+
+        client.connect(listOf("wss://relay.one", "wss://relay.two"))
+
+        assertEquals(2, factory.connections.size)
+        assertNull(factory.connections.first().socket.closeCode)
+    }
+
     private fun sampleEvent() = NostrEvent(
         id = "a".repeat(64),
         pubKey = "b".repeat(64),
