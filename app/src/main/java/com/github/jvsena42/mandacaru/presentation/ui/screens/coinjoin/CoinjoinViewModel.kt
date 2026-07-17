@@ -9,6 +9,7 @@ import com.github.jvsena42.mandacaru.data.PreferenceKeys
 import com.github.jvsena42.mandacaru.data.PreferencesDataSource
 import com.github.jvsena42.mandacaru.data.floresta.toFlorestaNetwork
 import com.github.jvsena42.mandacaru.data.network.ProxyReachabilityChecker
+import com.github.jvsena42.mandacaru.data.network.resolveNostrRelays
 import com.github.jvsena42.mandacaru.data.network.resolveTorProxySettings
 import com.github.jvsena42.mandacaru.domain.bitcoin.TxPrimitives
 import com.github.jvsena42.mandacaru.domain.coinjoin.CoinjoinEngine
@@ -28,9 +29,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
-/** Default public relays; user-editable list lands in Settings. */
-val DEFAULT_NOSTR_RELAYS = listOf("wss://relay.damus.io", "wss://nos.lol", "wss://relay.snort.social")
-
 class CoinjoinViewModel(
     private val engine: CoinjoinEngine,
     private val florestaRpc: FlorestaRpc,
@@ -47,7 +45,7 @@ class CoinjoinViewModel(
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            engine.connectAndDiscover(DEFAULT_NOSTR_RELAYS)
+            engine.connectAndDiscover(preferencesDataSource.resolveNostrRelays())
             engine.poolAnnouncements().collect { pool ->
                 _uiState.update { state ->
                     if (state.pools.any { it.id == pool.id }) state else state.copy(pools = state.pools + pool, isLoading = false)
@@ -87,7 +85,7 @@ class CoinjoinViewModel(
                 denominationSats = denomination,
                 peers = MIN_POOL_PEERS,
                 timeoutSeconds = poolTimeoutSeconds,
-                relay = DEFAULT_NOSTR_RELAYS.first(),
+                relay = preferencesDataSource.resolveNostrRelays().first(),
                 feeRateSatVb = DEFAULT_FEE_RATE,
             ).onSuccess { local ->
                 _uiState.update { it.copy(activePoolId = local.pool.id, activePoolStatus = "Waiting for peers to join…") }

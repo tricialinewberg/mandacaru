@@ -39,4 +39,8 @@ sealed interface SettingsAction {
     data class OnToggleTor(val enabled: Boolean): SettingsAction
     data class OnTorSocksHostChanged(val host: String): SettingsAction
     data class OnTorSocksPortChanged(val port: String): SettingsAction
+    object ToggleNostrRelaysExpanded: SettingsAction
+    data class OnNostrRelayInputChanged(val value: String): SettingsAction
+    object OnClickAddNostrRelay: SettingsAction
+    data class OnClickRemoveNostrRelay(val relay: String): SettingsAction
 }

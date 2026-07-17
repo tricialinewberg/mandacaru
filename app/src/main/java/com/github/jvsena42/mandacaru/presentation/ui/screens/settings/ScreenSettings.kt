@@ -39,7 +39,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Info
@@ -62,6 +64,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -95,6 +98,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.Dp
@@ -699,6 +703,117 @@ private fun ScreenSettings(
                                 )
                                 Text(
                                     stringResource(R.string.tor_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Nostr Relays Section
+                item {
+                    SectionCard(
+                        title = stringResource(R.string.nostr_relays),
+                        icon = Icons.Outlined.Dns,
+                        isExpanded = uiState.isNostrRelaysExpanded,
+                        onToggle = { onAction(SettingsAction.ToggleNostrRelaysExpanded) },
+                        modifier = Modifier.animateItem(),
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            uiState.nostrRelays.forEach { relay ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .testTag("relay_item_$relay"),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = relay,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    IconButton(
+                                        onClick = { onAction(SettingsAction.OnClickRemoveNostrRelay(relay)) },
+                                        enabled = uiState.nostrRelays.size > 1,
+                                        modifier = Modifier.testTag("button_remove_relay_$relay"),
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Delete,
+                                            contentDescription = "Remove relay",
+                                            tint = if (uiState.nostrRelays.size > 1) {
+                                                MaterialTheme.colorScheme.error
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = uiState.nostrRelayInput,
+                                onValueChange = { onAction(SettingsAction.OnNostrRelayInputChanged(it)) },
+                                label = { Text(stringResource(R.string.nostr_relay_input_label)) },
+                                placeholder = { Text(stringResource(R.string.nostr_relay_input_placeholder)) },
+                                maxLines = 1,
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                isError = uiState.nostrRelayError != null,
+                                supportingText = uiState.nostrRelayError?.let { resId ->
+                                    {
+                                        Text(
+                                            if (resId == R.string.nostr_relay_error_max_reached) {
+                                                stringResource(resId, Constants.MAX_NOSTR_RELAYS)
+                                            } else {
+                                                stringResource(resId)
+                                            },
+                                        )
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(
+                                    onDone = { onAction(SettingsAction.OnClickAddNostrRelay) },
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("input_nostr_relay"),
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Button(
+                                onClick = { onAction(SettingsAction.OnClickAddNostrRelay) },
+                                enabled = uiState.nostrRelays.size < Constants.MAX_NOSTR_RELAYS,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("button_add_relay"),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Text(stringResource(R.string.add_relay))
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Info,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                                Text(
+                                    stringResource(R.string.nostr_relay_hint),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )

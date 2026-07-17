@@ -52,6 +52,16 @@
     <string name="tor_socks_port">SOCKS port</string>
     <string name="tor_socks_port_placeholder">9050</string>
     <string name="tor_hint">Only the Nostr relay connections used for CoinJoin are routed through Tor — the local node\'s own P2P and RPC traffic are unaffected.</string>
+    <string name="nostr_relays">Nostr relays</string>
+    <string name="nostr_relay_input_label">Relay URL</string>
+    <string name="nostr_relay_input_placeholder">wss://relay.example.com</string>
+    <string name="add_relay">Add relay</string>
+    <string name="nostr_relay_error_invalid_scheme">Relay URL must use wss:// (secure WebSocket)</string>
+    <string name="nostr_relay_error_invalid_format">Enter a valid relay URL, e.g. wss://relay.example.com</string>
+    <string name="nostr_relay_error_duplicate">This relay is already in the list</string>
+    <string name="nostr_relay_error_max_reached">You can configure up to %1$d relays</string>
+    <string name="nostr_relay_error_last_one">At least one relay is required</string>
+    <string name="nostr_relay_hint">CoinJoin pools are discovered and coordinated over these relays. At least one is required; if Tor is enabled above, it applies to all of them.</string>
     <string name="validated_blocks">Validated Blocks</string>
     <string name="descriptors">Descriptors</string>
     <string name="no_descriptors_loaded">No descriptors loaded yet</string>

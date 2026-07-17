@@ -10,13 +10,17 @@ import com.github.jvsena42.mandacaru.data.AppUpdateRepository
 import com.github.jvsena42.mandacaru.data.FlorestaRpc
 import com.github.jvsena42.mandacaru.data.PreferenceKeys
 import com.github.jvsena42.mandacaru.data.PreferencesDataSource
+import com.github.jvsena42.mandacaru.data.network.resolveNostrRelays
+import com.github.jvsena42.mandacaru.data.network.saveNostrRelays
 import com.github.jvsena42.mandacaru.R
+import com.github.jvsena42.mandacaru.domain.model.Constants
 import com.github.jvsena42.mandacaru.domain.model.florestaRPC.AddNodeCommand
 import com.github.jvsena42.mandacaru.domain.scan.DescriptorQrScanner
 import com.github.jvsena42.mandacaru.domain.scan.DescriptorScanState
 import com.github.jvsena42.mandacaru.presentation.utils.DescriptorUtils
 import com.github.jvsena42.mandacaru.presentation.utils.EventFlow
 import com.github.jvsena42.mandacaru.presentation.utils.EventFlowImpl
+import com.github.jvsena42.mandacaru.presentation.utils.NostrRelayValidator
 import com.github.jvsena42.mandacaru.presentation.utils.PeerAddressValidator
 import com.github.jvsena42.mandacaru.presentation.utils.WalletBirthday
 import com.github.jvsena42.mandacaru.presentation.utils.getElectrumPort
@@ -69,6 +73,7 @@ class SettingsViewModel(
                 .getString(PreferenceKeys.TOR_SOCKS_HOST, "")
             val torSocksPort = preferencesDataSource
                 .getString(PreferenceKeys.TOR_SOCKS_PORT, "")
+            val nostrRelays = preferencesDataSource.resolveNostrRelays()
             _uiState.update {
                 it.copy(
                     selectedNetwork = preferencesDataSource.getString(
@@ -81,6 +86,7 @@ class SettingsViewModel(
                     torEnabled = torEnabled,
                     torSocksHost = torSocksHost,
                     torSocksPort = torSocksPort,
+                    nostrRelays = nostrRelays,
                 )
             }
             updateElectrumAddress()
@@ -241,6 +247,15 @@ class SettingsViewModel(
                     preferencesDataSource.setString(PreferenceKeys.TOR_SOCKS_PORT, action.port)
                 }
             }
+
+            SettingsAction.ToggleNostrRelaysExpanded -> _uiState.update {
+                it.copy(isNostrRelaysExpanded = !it.isNostrRelaysExpanded)
+            }
+            is SettingsAction.OnNostrRelayInputChanged -> _uiState.update {
+                it.copy(nostrRelayInput = action.value, nostrRelayError = null)
+            }
+            SettingsAction.OnClickAddNostrRelay -> addNostrRelay()
+            is SettingsAction.OnClickRemoveNostrRelay -> removeNostrRelay(action.relay)
         }
     }
 
@@ -249,6 +264,45 @@ class SettingsViewModel(
             preferencesDataSource.setBoolean(PreferenceKeys.TOR_ENABLED, action.enabled)
             _uiState.update { it.copy(torEnabled = action.enabled) }
         }
+    }
+
+    /**
+     * Validates and appends a relay, enforcing the guardrails a bare preference write can't:
+     * a valid `wss://` URL, no duplicates, and no more than [Constants.MAX_NOSTR_RELAYS] - the
+     * empty-list guard lives in [removeNostrRelay] instead, since this path only ever grows the list.
+     */
+    private fun addNostrRelay() {
+        val input = _uiState.value.nostrRelayInput.trim()
+        val relays = _uiState.value.nostrRelays
+        val errorRes = when (NostrRelayValidator.validate(input)) {
+            NostrRelayValidator.Result.Empty -> return
+            NostrRelayValidator.Result.InvalidScheme -> R.string.nostr_relay_error_invalid_scheme
+            NostrRelayValidator.Result.InvalidFormat -> R.string.nostr_relay_error_invalid_format
+            NostrRelayValidator.Result.Valid -> when {
+                relays.any { it.equals(input, ignoreCase = true) } -> R.string.nostr_relay_error_duplicate
+                relays.size >= Constants.MAX_NOSTR_RELAYS -> R.string.nostr_relay_error_max_reached
+                else -> null
+            }
+        }
+        if (errorRes != null) {
+            _uiState.update { it.copy(nostrRelayError = errorRes) }
+            return
+        }
+        val updated = relays + input
+        _uiState.update { it.copy(nostrRelays = updated, nostrRelayInput = "", nostrRelayError = null) }
+        viewModelScope.launch(Dispatchers.IO) { preferencesDataSource.saveNostrRelays(updated) }
+    }
+
+    /** Refuses to remove the last remaining relay - CoinJoin needs at least one to discover/coordinate pools. */
+    private fun removeNostrRelay(relay: String) {
+        val relays = _uiState.value.nostrRelays
+        if (relays.size <= 1) {
+            _uiState.update { it.copy(nostrRelayError = R.string.nostr_relay_error_last_one) }
+            return
+        }
+        val updated = relays - relay
+        _uiState.update { it.copy(nostrRelays = updated) }
+        viewModelScope.launch(Dispatchers.IO) { preferencesDataSource.saveNostrRelays(updated) }
     }
 
     private fun handleAdvancedFeaturesToggled(action: SettingsAction.OnToggleAdvancedFeatures) {
