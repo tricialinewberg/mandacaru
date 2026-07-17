@@ -236,6 +236,10 @@ class WalletManagerImplTest {
         val sigDerOnly = TxPrimitives.hexToBytes(contribution.witnessSignatureHex).dropLast(1).toByteArray()
         val pubKey = TxPrimitives.hexToBytes(contribution.witnessPubKeyHex)
 
+        // Secp256k1.verify() accepts either compact (64-byte) or DER signatures, so it alone
+        // can't catch a regression back to the compact format the SegWit witness rejects -
+        // assert the DER SEQUENCE tag explicitly (a compact r||s signature never starts with 0x30).
+        assertEquals(0x30, sigDerOnly[0].toInt() and 0xff)
         assertTrue(Secp256k1.verify(sigDerOnly, expectedSighash, pubKey))
     }
 
